@@ -3,7 +3,7 @@ package middleware
 import (
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type AuthenticationMiddleware struct {
@@ -17,7 +17,7 @@ func NewAuthenticationMiddleware(validAPIKeys map[string]bool) *AuthenticationMi
 }
 
 // TokenAuth is a simple middleware that checks if the request has a valid API key
-func (am *AuthenticationMiddleware) Authenticate(c *fiber.Ctx) error {
+func (am *AuthenticationMiddleware) Authenticate(c fiber.Ctx) error {
 
 	// Get the Authorization header
 	authHeader := c.Get("Authorization")
