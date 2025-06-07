@@ -3,9 +3,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 class UserState(StatesGroup):
     default = State()
-    scale_prompt_service = State()
-    scale_prompt_n = State()
-    scale_done = State()
+    scale_prompted_service = State()
+    scale_prompted_n = State()
+    scale_confirm = State()
     rollback_prompted_version = State()
     rollback_confirm = State()
-    scale_bad_format = State()

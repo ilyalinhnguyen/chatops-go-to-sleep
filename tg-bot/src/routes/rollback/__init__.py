@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from aiogram import F, Router
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -67,7 +68,10 @@ async def command_rollback(message: Message, state: FSMContext) -> None:
 
     rollback_data = RollbackData.parse_command(message.text)
     if rollback_data is None:
-        await message.answer("/rollback <VERSION>")
+        await message.answer(
+            "`/rollback <VERSION>`",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
         return
 
     await state.update_data(version=rollback_data.version)
