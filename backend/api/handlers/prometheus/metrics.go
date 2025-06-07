@@ -14,26 +14,22 @@ type MetricsHandler struct {
 	promClient *query.PrometheusClient
 }
 
-// NewMetricsHandler creates a new Prometheus metrics handler
 func NewMetricsHandler(promURL string) *MetricsHandler {
 	return &MetricsHandler{
 		promClient: query.NewPrometheusClient(promURL),
 	}
 }
 
-// BasicMetrics represents basic Prometheus metrics
 type BasicMetrics struct {
-	UpStatus    bool    `json:"upStatus"`    // Whether the monitored service is up
-	CPUUsage    float64 `json:"cpuUsage"`    // CPU usage rate
-	MemoryUsage float64 `json:"memoryUsage"` // Memory usage in bytes
-	Timestamp   string  `json:"timestamp"`   // Time when metrics were collected
+	UpStatus    bool    `json:"upStatus"`
+	CPUUsage    float64 `json:"cpuUsage"`
+	MemoryUsage float64 `json:"memoryUsage"`
+	Timestamp   string  `json:"timestamp"`
 }
 
-// GetBasicMetrics returns available basic metrics from Prometheus
 func (h *MetricsHandler) GetBasicMetrics(c fiber.Ctx) error {
 	ctx := context.Background()
-	
-	// Query for service up status
+
 	upQuery := "up"
 	upResult, err := h.promClient.Query(ctx, upQuery, time.Now())
 	if err != nil {
@@ -41,8 +37,7 @@ func (h *MetricsHandler) GetBasicMetrics(c fiber.Ctx) error {
 			"error": fmt.Sprintf("Failed to fetch up status: %v", err),
 		})
 	}
-	
-	// Query for CPU usage rate
+
 	cpuQuery := "rate(process_cpu_seconds_total[1m])"
 	cpuResult, err := h.promClient.Query(ctx, cpuQuery, time.Now())
 	if err != nil {
@@ -50,8 +45,7 @@ func (h *MetricsHandler) GetBasicMetrics(c fiber.Ctx) error {
 			"error": fmt.Sprintf("Failed to fetch CPU metrics: %v", err),
 		})
 	}
-	
-	// Query for memory usage
+
 	memQuery := "process_resident_memory_bytes"
 	memResult, err := h.promClient.Query(ctx, memQuery, time.Now())
 	if err != nil {
@@ -59,12 +53,12 @@ func (h *MetricsHandler) GetBasicMetrics(c fiber.Ctx) error {
 			"error": fmt.Sprintf("Failed to fetch memory metrics: %v", err),
 		})
 	}
-	
+
 	// Parse results
 	var upStatus bool = false
 	var cpuUsage, memUsage float64
 	var timestamp time.Time
-	
+
 	if len(upResult.Data.Result) > 0 {
 		upValue, ts, err := query.FormatValue(upResult.Data.Result[0].Value)
 		if err == nil {
@@ -72,35 +66,34 @@ func (h *MetricsHandler) GetBasicMetrics(c fiber.Ctx) error {
 			timestamp = ts
 		}
 	}
-	
+
 	if len(cpuResult.Data.Result) > 0 {
 		cpuUsage, _, err = query.FormatValue(cpuResult.Data.Result[0].Value)
 		if err != nil {
 			cpuUsage = 0
 		}
 	}
-	
+
 	if len(memResult.Data.Result) > 0 {
 		memUsage, _, err = query.FormatValue(memResult.Data.Result[0].Value)
 		if err != nil {
 			memUsage = 0
 		}
 	}
-	
+
 	metrics := BasicMetrics{
 		UpStatus:    upStatus,
 		CPUUsage:    cpuUsage,
 		MemoryUsage: memUsage,
 		Timestamp:   timestamp.Format(time.RFC3339),
 	}
-	
+
 	return c.Status(fiber.StatusOK).JSON(metrics)
 }
 
-// MetricsList gets a list of all available metrics from Prometheus
 func (h *MetricsHandler) MetricsList(c fiber.Ctx) error {
 	ctx := context.Background()
-	
+
 	// Query for all available metrics
 	metricListQuery := "{__name__=~\".+\"}"
 	result, err := h.promClient.Query(ctx, metricListQuery, time.Now())
@@ -109,33 +102,29 @@ func (h *MetricsHandler) MetricsList(c fiber.Ctx) error {
 			"error": fmt.Sprintf("Failed to fetch metrics list: %v", err),
 		})
 	}
-	
-	// Extract metric names
+
 	metricNames := make([]string, 0, len(result.Data.Result))
 	for _, metric := range result.Data.Result {
 		if name, ok := metric.Metric["__name__"]; ok {
 			metricNames = append(metricNames, name)
 		}
 	}
-	
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"metrics": metricNames,
 	})
 }
 
-// QueryMetric allows querying any metric by name
 func (h *MetricsHandler) QueryMetric(c fiber.Ctx) error {
 	ctx := context.Background()
-	
-	// Get metric name from request
+
 	metricName := c.Params("name")
 	if metricName == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Metric name is required",
 		})
 	}
-	
-	// Query for the metric
+
 	metricQuery := metricName
 	result, err := h.promClient.Query(ctx, metricQuery, time.Now())
 	if err != nil {
@@ -143,44 +132,42 @@ func (h *MetricsHandler) QueryMetric(c fiber.Ctx) error {
 			"error": fmt.Sprintf("Failed to fetch metric %s: %v", metricName, err),
 		})
 	}
-	
+
 	if len(result.Data.Result) == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": fmt.Sprintf("No data found for metric %s", metricName),
 		})
 	}
-	
+
 	return c.Status(fiber.StatusOK).JSON(result.Data)
 }
 
 // CustomQuery allows running a custom PromQL query
 func (h *MetricsHandler) CustomQuery(c fiber.Ctx) error {
 	ctx := context.Background()
-	
-	// Get query from request body
+
 	var body struct {
 		Query string `json:"query"`
 	}
-	
+
 	if err := c.Bind().Body(&body); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request body",
 		})
 	}
-	
+
 	if body.Query == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Query is required",
 		})
 	}
-	
-	// Execute the query
+
 	result, err := h.promClient.Query(ctx, body.Query, time.Now())
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fmt.Sprintf("Failed to execute query: %v", err),
 		})
 	}
-	
+
 	return c.Status(fiber.StatusOK).JSON(result)
 }

@@ -6,445 +6,325 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/prometheus_client/query"
+	kuberclient "github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/kuber_client"
 )
 
-// MetricsHandler handles Kubernetes metrics requests
 type MetricsHandler struct {
-	promClient *query.PrometheusClient
+	kubeClient *kuberclient.Client
 }
 
-// NewMetricsHandler creates a new Kubernetes metrics handler
-func NewMetricsHandler(promURL string) *MetricsHandler {
+func NewMetricsHandler(client *kuberclient.Client) *MetricsHandler {
 	return &MetricsHandler{
-		promClient: query.NewPrometheusClient(promURL),
+		kubeClient: client,
 	}
 }
 
-// ClusterMetrics represents overall cluster metrics
 type ClusterMetrics struct {
-	CPUUsage    float64 `json:"cpuUsage"`    // Percentage of CPU usage across the cluster
-	MemoryUsage float64 `json:"memoryUsage"` // Percentage of memory usage across the cluster
-	NodeCount   int     `json:"nodeCount"`   // Number of nodes in the cluster
-	PodCount    int     `json:"podCount"`    // Number of pods running in the cluster
-	Timestamp   string  `json:"timestamp"`   // Time when metrics were collected
+	NodeCount     int    `json:"nodeCount"`
+	NodesReady    int    `json:"nodesReady"`
+	PodCount      int    `json:"podCount"`
+	PodsRunning   int    `json:"podsRunning"`
+	PodsPending   int    `json:"podsPending"`
+	PodsFailed    int    `json:"podsFailed"`
+	PodsSucceeded int    `json:"podsSucceeded"`
+	Timestamp     string `json:"timestamp"`
 }
 
-// NodeMetrics represents metrics for a single node
 type NodeMetrics struct {
-	Name        string  `json:"name"`
-	CPUUsage    float64 `json:"cpuUsage"`    // Percentage of CPU usage
-	MemoryUsage float64 `json:"memoryUsage"` // Percentage of memory usage
-	DiskUsage   float64 `json:"diskUsage"`   // Percentage of disk usage
-	PodCount    int     `json:"podCount"`    // Number of pods running on this node
+	Name        string                 `json:"name"`
+	Status      string                 `json:"status"`
+	Allocatable map[string]interface{} `json:"allocatable"`
+	Capacity    map[string]interface{} `json:"capacity"`
+	Labels      map[string]string      `json:"labels"`
 }
 
-// PodMetrics represents metrics for a single pod
 type PodMetrics struct {
-	Name           string  `json:"name"`
-	Namespace      string  `json:"namespace"`
-	CPUUsage       float64 `json:"cpuUsage"`       // CPU usage in cores
-	MemoryUsage    float64 `json:"memoryUsage"`    // Memory usage in bytes
-	RestartCount   int     `json:"restartCount"`   // Number of restarts
-	ContainerCount int     `json:"containerCount"` // Number of containers
+	Name       string `json:"name"`
+	Namespace  string `json:"namespace"`
+	Status     string `json:"status"`
+	HostIP     string `json:"hostIP"`
+	PodIP      string `json:"podIP"`
+	StartTime  string `json:"startTime,omitempty"`
+	Containers int    `json:"containers"`
 }
 
-// GetClusterMetrics returns overall cluster metrics
+type DeploymentMetrics struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Replicas  int32  `json:"replicas"`
+	Available int32  `json:"available"`
+	Ready     int32  `json:"ready"`
+}
+
 func (h *MetricsHandler) GetClusterMetrics(c fiber.Ctx) error {
+	if h.kubeClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Kubernetes client not available",
+		})
+	}
+
 	ctx := context.Background()
-	
-	// Query for CPU usage across the cluster
-	cpuQuery := "sum(rate(container_cpu_usage_seconds_total{container!=''}[5m])) / sum(machine_cpu_cores) * 100"
-	cpuResult, err := h.promClient.Query(ctx, cpuQuery, time.Now())
+	metrics, err := h.kubeClient.GetClusterMetrics(ctx)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch CPU metrics: %v", err),
+			"error": fmt.Sprintf("Failed to fetch cluster metrics: %v", err),
 		})
 	}
-	
-	// Query for memory usage across the cluster
-	memQuery := "sum(container_memory_usage_bytes{container!=''}) / sum(machine_memory_bytes) * 100"
-	memResult, err := h.promClient.Query(ctx, memQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch memory metrics: %v", err),
-		})
+
+	// Convert to our response format
+	clusterMetrics := ClusterMetrics{
+		NodeCount:     metrics["nodes_total"].(int),
+		NodesReady:    metrics["nodes_ready"].(int),
+		PodCount:      metrics["pods_total"].(int),
+		PodsRunning:   metrics["pods_running"].(int),
+		PodsPending:   metrics["pods_pending"].(int),
+		PodsFailed:    metrics["pods_failed"].(int),
+		PodsSucceeded: metrics["pods_succeeded"].(int),
+		Timestamp:     time.Now().Format(time.RFC3339),
 	}
-	
-	// Query for node count
-	nodeQuery := "count(kube_node_info)"
-	nodeResult, err := h.promClient.Query(ctx, nodeQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch node count: %v", err),
-		})
-	}
-	
-	// Query for pod count
-	podQuery := "count(kube_pod_info)"
-	podResult, err := h.promClient.Query(ctx, podQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch pod count: %v", err),
-		})
-	}
-	
-	// Parse results
-	var cpuUsage, memUsage float64
-	var nodeCount, podCount int
-	var timestamp time.Time
-	
-	if len(cpuResult.Data.Result) > 0 {
-		cpuUsage, timestamp, err = query.FormatValue(cpuResult.Data.Result[0].Value)
-		if err != nil {
-			cpuUsage = 0
-		}
-	}
-	
-	if len(memResult.Data.Result) > 0 {
-		memUsage, _, err = query.FormatValue(memResult.Data.Result[0].Value)
-		if err != nil {
-			memUsage = 0
-		}
-	}
-	
-	if len(nodeResult.Data.Result) > 0 {
-		nodeCountFloat, _, err := query.FormatValue(nodeResult.Data.Result[0].Value)
-		if err == nil {
-			nodeCount = int(nodeCountFloat)
-		}
-	}
-	
-	if len(podResult.Data.Result) > 0 {
-		podCountFloat, _, err := query.FormatValue(podResult.Data.Result[0].Value)
-		if err == nil {
-			podCount = int(podCountFloat)
-		}
-	}
-	
-	metrics := ClusterMetrics{
-		CPUUsage:    cpuUsage,
-		MemoryUsage: memUsage,
-		NodeCount:   nodeCount,
-		PodCount:    podCount,
-		Timestamp:   timestamp.Format(time.RFC3339),
-	}
-	
-	return c.Status(fiber.StatusOK).JSON(metrics)
+
+	return c.Status(fiber.StatusOK).JSON(clusterMetrics)
 }
 
-// GetNodeMetrics returns metrics for all nodes
 func (h *MetricsHandler) GetNodeMetrics(c fiber.Ctx) error {
+	if h.kubeClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Kubernetes client not available",
+		})
+	}
+
 	ctx := context.Background()
-	
-	// Query for node CPU usage
-	cpuQuery := "sum(rate(node_cpu_seconds_total{mode!='idle'}[5m])) by (instance) / on(instance) group_left count(node_cpu_seconds_total{mode='idle'}) by (instance) * 100"
-	cpuResult, err := h.promClient.Query(ctx, cpuQuery, time.Now())
+	nodeName := c.Query("name", "") // Optional node name filter
+
+	metrics, err := h.kubeClient.GetNodeMetrics(ctx, nodeName)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch node CPU metrics: %v", err),
+			"error": fmt.Sprintf("Failed to fetch node metrics: %v", err),
 		})
 	}
-	
-	// Query for node memory usage
-	memQuery := "node_memory_Active_bytes / node_memory_MemTotal_bytes * 100"
-	memResult, err := h.promClient.Query(ctx, memQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch node memory metrics: %v", err),
-		})
-	}
-	
-	// Query for node disk usage
-	diskQuery := "100 - ((node_filesystem_avail_bytes{mountpoint='/'} * 100) / node_filesystem_size_bytes{mountpoint='/'})"
-	diskResult, err := h.promClient.Query(ctx, diskQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch node disk metrics: %v", err),
-		})
-	}
-	
-	// Query for pod count per node
-	podQuery := "count(kube_pod_info) by (node)"
-	podResult, err := h.promClient.Query(ctx, podQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch pod count per node: %v", err),
-		})
-	}
-	
-	// Map to store node metrics
-	nodeMetricsMap := make(map[string]*NodeMetrics)
-	
-	// Process CPU metrics
-	for _, result := range cpuResult.Data.Result {
-		nodeName := result.Metric["instance"]
-		if _, exists := nodeMetricsMap[nodeName]; !exists {
-			nodeMetricsMap[nodeName] = &NodeMetrics{Name: nodeName}
+
+	// Convert to our response format
+	nodeMetrics := make([]NodeMetrics, 0, len(metrics))
+	for _, nodeData := range metrics {
+		node := NodeMetrics{
+			Name:   nodeData["name"].(string),
+			Status: nodeData["status"].(string),
 		}
-		
-		cpuUsage, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			nodeMetricsMap[nodeName].CPUUsage = cpuUsage
+
+		if allocatable, ok := nodeData["allocatable"].(map[string]interface{}); ok {
+			node.Allocatable = allocatable
 		}
+
+		if capacity, ok := nodeData["capacity"].(map[string]interface{}); ok {
+			node.Capacity = capacity
+		}
+
+		if labels, ok := nodeData["labels"].(map[string]interface{}); ok {
+			node.Labels = convertMapToStringString(labels)
+		}
+
+		nodeMetrics = append(nodeMetrics, node)
 	}
-	
-	// Process memory metrics
-	for _, result := range memResult.Data.Result {
-		nodeName := result.Metric["instance"]
-		if _, exists := nodeMetricsMap[nodeName]; !exists {
-			nodeMetricsMap[nodeName] = &NodeMetrics{Name: nodeName}
-		}
-		
-		memUsage, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			nodeMetricsMap[nodeName].MemoryUsage = memUsage
-		}
-	}
-	
-	// Process disk metrics
-	for _, result := range diskResult.Data.Result {
-		nodeName := result.Metric["instance"]
-		if _, exists := nodeMetricsMap[nodeName]; !exists {
-			nodeMetricsMap[nodeName] = &NodeMetrics{Name: nodeName}
-		}
-		
-		diskUsage, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			nodeMetricsMap[nodeName].DiskUsage = diskUsage
-		}
-	}
-	
-	// Process pod count
-	for _, result := range podResult.Data.Result {
-		nodeName := result.Metric["node"]
-		if _, exists := nodeMetricsMap[nodeName]; !exists {
-			nodeMetricsMap[nodeName] = &NodeMetrics{Name: nodeName}
-		}
-		
-		podCount, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			nodeMetricsMap[nodeName].PodCount = int(podCount)
-		}
-	}
-	
-	// Convert map to slice
-	nodeMetrics := make([]NodeMetrics, 0, len(nodeMetricsMap))
-	for _, metrics := range nodeMetricsMap {
-		nodeMetrics = append(nodeMetrics, *metrics)
-	}
-	
+
 	return c.Status(fiber.StatusOK).JSON(nodeMetrics)
 }
 
-// GetPodMetrics returns metrics for all pods
 func (h *MetricsHandler) GetPodMetrics(c fiber.Ctx) error {
+	if h.kubeClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Kubernetes client not available",
+		})
+	}
+
 	ctx := context.Background()
-	namespace := c.Query("namespace")
-	
-	// Build namespace filter
-	namespaceFilter := ""
-	if namespace != "" {
-		namespaceFilter = fmt.Sprintf(`,namespace="%s"`, namespace)
-	}
-	
-	// Query for pod CPU usage
-	cpuQuery := fmt.Sprintf("sum(rate(container_cpu_usage_seconds_total{container!=''}[5m])) by (pod%s)", namespaceFilter)
-	cpuResult, err := h.promClient.Query(ctx, cpuQuery, time.Now())
+	namespace := c.Query("namespace", "") // Optional namespace filter
+
+	metrics, err := h.kubeClient.GetPodMetrics(ctx, namespace)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch pod CPU metrics: %v", err),
+			"error": fmt.Sprintf("Failed to fetch pod metrics: %v", err),
 		})
 	}
-	
-	// Query for pod memory usage
-	memQuery := fmt.Sprintf("sum(container_memory_usage_bytes{container!=''}) by (pod%s)", namespaceFilter)
-	memResult, err := h.promClient.Query(ctx, memQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch pod memory metrics: %v", err),
-		})
-	}
-	
-	// Query for pod restart count
-	restartQuery := fmt.Sprintf("sum(kube_pod_container_status_restarts_total) by (pod%s)", namespaceFilter)
-	restartResult, err := h.promClient.Query(ctx, restartQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch pod restart metrics: %v", err),
-		})
-	}
-	
-	// Query for container count per pod
-	containerQuery := fmt.Sprintf("count(kube_pod_container_info) by (pod%s)", namespaceFilter)
-	containerResult, err := h.promClient.Query(ctx, containerQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch container count: %v", err),
-		})
-	}
-	
-	// Map to store pod metrics
-	podMetricsMap := make(map[string]*PodMetrics)
-	
-	// Process CPU metrics
-	for _, result := range cpuResult.Data.Result {
-		podName := result.Metric["pod"]
-		ns := result.Metric["namespace"]
-		
-		key := fmt.Sprintf("%s/%s", ns, podName)
-		if _, exists := podMetricsMap[key]; !exists {
-			podMetricsMap[key] = &PodMetrics{Name: podName, Namespace: ns}
+
+	// Convert to our response format
+	podMetrics := make([]PodMetrics, 0, len(metrics))
+	for _, podData := range metrics {
+		pod := PodMetrics{
+			Name:       podData["name"].(string),
+			Namespace:  podData["namespace"].(string),
+			Status:     podData["status"].(string),
+			Containers: podData["containers"].(int),
 		}
-		
-		cpuUsage, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			podMetricsMap[key].CPUUsage = cpuUsage
+
+		if hostIP, ok := podData["hostIP"].(string); ok {
+			pod.HostIP = hostIP
 		}
+
+		if podIP, ok := podData["podIP"].(string); ok {
+			pod.PodIP = podIP
+		}
+
+		// Handle startTime which could be a time.Time or string
+		if startTimeData, ok := podData["startTime"]; ok {
+			switch st := startTimeData.(type) {
+			case time.Time:
+				pod.StartTime = st.Format(time.RFC3339)
+			case string:
+				pod.StartTime = st
+			case *time.Time:
+				if st != nil {
+					pod.StartTime = st.Format(time.RFC3339)
+				}
+			case map[string]interface{}:
+				// Sometimes Kubernetes returns a structured time object
+				if timeStr, ok := st["time"].(string); ok {
+					pod.StartTime = timeStr
+				}
+			}
+		}
+
+		podMetrics = append(podMetrics, pod)
 	}
-	
-	// Process memory metrics
-	for _, result := range memResult.Data.Result {
-		podName := result.Metric["pod"]
-		ns := result.Metric["namespace"]
-		
-		key := fmt.Sprintf("%s/%s", ns, podName)
-		if _, exists := podMetricsMap[key]; !exists {
-			podMetricsMap[key] = &PodMetrics{Name: podName, Namespace: ns}
-		}
-		
-		memUsage, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			podMetricsMap[key].MemoryUsage = memUsage
-		}
-	}
-	
-	// Process restart count
-	for _, result := range restartResult.Data.Result {
-		podName := result.Metric["pod"]
-		ns := result.Metric["namespace"]
-		
-		key := fmt.Sprintf("%s/%s", ns, podName)
-		if _, exists := podMetricsMap[key]; !exists {
-			podMetricsMap[key] = &PodMetrics{Name: podName, Namespace: ns}
-		}
-		
-		restartCount, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			podMetricsMap[key].RestartCount = int(restartCount)
-		}
-	}
-	
-	// Process container count
-	for _, result := range containerResult.Data.Result {
-		podName := result.Metric["pod"]
-		ns := result.Metric["namespace"]
-		
-		key := fmt.Sprintf("%s/%s", ns, podName)
-		if _, exists := podMetricsMap[key]; !exists {
-			podMetricsMap[key] = &PodMetrics{Name: podName, Namespace: ns}
-		}
-		
-		containerCount, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			podMetricsMap[key].ContainerCount = int(containerCount)
-		}
-	}
-	
-	// Convert map to slice
-	podMetrics := make([]PodMetrics, 0, len(podMetricsMap))
-	for _, metrics := range podMetricsMap {
-		podMetrics = append(podMetrics, *metrics)
-	}
-	
+
 	return c.Status(fiber.StatusOK).JSON(podMetrics)
 }
 
-// GetNamespaceMetrics returns aggregated metrics per namespace
 func (h *MetricsHandler) GetNamespaceMetrics(c fiber.Ctx) error {
+	if h.kubeClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Kubernetes client not available",
+		})
+	}
+
 	ctx := context.Background()
-	
-	// Query for namespace CPU usage
-	cpuQuery := "sum(rate(container_cpu_usage_seconds_total{container!=''}[5m])) by (namespace)"
-	cpuResult, err := h.promClient.Query(ctx, cpuQuery, time.Now())
+
+	// Get pod information to group by namespace
+	pods, err := h.kubeClient.GetPodMetrics(ctx, "")
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch namespace CPU metrics: %v", err),
+			"error": fmt.Sprintf("Failed to fetch pod metrics: %v", err),
 		})
 	}
-	
-	// Query for namespace memory usage
-	memQuery := "sum(container_memory_usage_bytes{container!=''}) by (namespace)"
-	memResult, err := h.promClient.Query(ctx, memQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch namespace memory metrics: %v", err),
-		})
-	}
-	
-	// Query for pod count per namespace
-	podQuery := "count(kube_pod_info) by (namespace)"
-	podResult, err := h.promClient.Query(ctx, podQuery, time.Now())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to fetch pod count: %v", err),
-		})
-	}
-	
-	// Build response with namespace metrics
+
+	// Group pods by namespace
 	type NamespaceMetrics struct {
-		Name        string  `json:"name"`
-		CPUUsage    float64 `json:"cpuUsage"`    // CPU usage in cores
-		MemoryUsage float64 `json:"memoryUsage"` // Memory usage in bytes
-		PodCount    int     `json:"podCount"`    // Number of pods
+		Name      string `json:"name"`
+		PodCount  int    `json:"podCount"`
+		Running   int    `json:"running"`
+		Pending   int    `json:"pending"`
+		Failed    int    `json:"failed"`
+		Succeeded int    `json:"succeeded"`
 	}
-	
-	namespaceMetricsMap := make(map[string]*NamespaceMetrics)
-	
-	// Process CPU metrics
-	for _, result := range cpuResult.Data.Result {
-		namespace := result.Metric["namespace"]
-		if _, exists := namespaceMetricsMap[namespace]; !exists {
-			namespaceMetricsMap[namespace] = &NamespaceMetrics{Name: namespace}
+
+	namespaceMap := make(map[string]*NamespaceMetrics)
+
+	for _, pod := range pods {
+		namespace := pod["namespace"].(string)
+		if _, exists := namespaceMap[namespace]; !exists {
+			namespaceMap[namespace] = &NamespaceMetrics{
+				Name: namespace,
+			}
 		}
-		
-		cpuUsage, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			namespaceMetricsMap[namespace].CPUUsage = cpuUsage
-		}
-	}
-	
-	// Process memory metrics
-	for _, result := range memResult.Data.Result {
-		namespace := result.Metric["namespace"]
-		if _, exists := namespaceMetricsMap[namespace]; !exists {
-			namespaceMetricsMap[namespace] = &NamespaceMetrics{Name: namespace}
-		}
-		
-		memUsage, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			namespaceMetricsMap[namespace].MemoryUsage = memUsage
-		}
-	}
-	
-	// Process pod count
-	for _, result := range podResult.Data.Result {
-		namespace := result.Metric["namespace"]
-		if _, exists := namespaceMetricsMap[namespace]; !exists {
-			namespaceMetricsMap[namespace] = &NamespaceMetrics{Name: namespace}
-		}
-		
-		podCount, _, err := query.FormatValue(result.Value)
-		if err == nil {
-			namespaceMetricsMap[namespace].PodCount = int(podCount)
+
+		// Increment pod count
+		namespaceMap[namespace].PodCount++
+
+		// Update status counts
+		status := pod["status"].(string)
+		switch status {
+		case "Running":
+			namespaceMap[namespace].Running++
+		case "Pending":
+			namespaceMap[namespace].Pending++
+		case "Failed":
+			namespaceMap[namespace].Failed++
+		case "Succeeded":
+			namespaceMap[namespace].Succeeded++
 		}
 	}
-	
-	// Convert map to slice
-	namespaceMetrics := make([]NamespaceMetrics, 0, len(namespaceMetricsMap))
-	for _, metrics := range namespaceMetricsMap {
+
+	// Convert map to slice for response
+	namespaceMetrics := make([]NamespaceMetrics, 0, len(namespaceMap))
+	for _, metrics := range namespaceMap {
 		namespaceMetrics = append(namespaceMetrics, *metrics)
 	}
-	
+
 	return c.Status(fiber.StatusOK).JSON(namespaceMetrics)
+}
+
+// GetDeployments returns a list of all deployments or deployments in a specific namespace
+func (h *MetricsHandler) GetDeploymentsMetrics(c fiber.Ctx) error {
+	if h.kubeClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Kubernetes client not available",
+		})
+	}
+
+	ctx := context.Background()
+	namespace := c.Query("namespace", "") // Optional namespace filter
+
+	deployments, err := h.kubeClient.ListDeployments(ctx, namespace)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to fetch deployments: %v", err),
+		})
+	}
+
+	// Convert to our response format
+	deploymentInfos := make([]DeploymentMetrics, 0, len(deployments))
+	for _, deployment := range deployments {
+		info := DeploymentMetrics{
+			Name:      deployment.Name,
+			Namespace: deployment.Namespace,
+			Replicas:  deployment.Replicas,
+			Available: deployment.AvailableReplicas,
+			Ready:     deployment.ReadyReplicas,
+		}
+		deploymentInfos = append(deploymentInfos, info)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(deploymentInfos)
+}
+
+// GetDeploymentStatus retrieves detailed status for a specific deployment
+func (h *MetricsHandler) GetDeploymentStatus(c fiber.Ctx) error {
+	if h.kubeClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Kubernetes client not available",
+		})
+	}
+
+	ctx := context.Background()
+	namespace := c.Query("namespace", "default")
+	name := c.Params("name")
+
+	if name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Deployment name is required",
+		})
+	}
+
+	status, err := h.kubeClient.GetDeploymentStatus(ctx, namespace, name)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Failed to get service status",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(status)
+}
+
+// Helper function to convert map[string]interface{} to map[string]string
+func convertMapToStringString(m map[string]interface{}) map[string]string {
+	result := make(map[string]string)
+	for k, v := range m {
+		if strValue, ok := v.(string); ok {
+			result[k] = strValue
+		} else {
+			result[k] = fmt.Sprintf("%v", v)
+		}
+	}
+	return result
 }
