@@ -1,0 +1,13 @@
+services:
+  # backend:
+    # build:
+    #   context: backend/
+    #   dockerfile: Dockerfile
+    # restart: always
+    # ports:
+    #   - "8000:8000"
+  tg-bot:
+    build:
+      context: tg-bot/
+    env_file:
+      - .env
