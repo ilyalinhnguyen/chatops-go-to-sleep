@@ -126,8 +126,6 @@ func (h *Handler) InitRoutes(cfg fiber.Config) {
 	v1.Get("/ping", h.ping)
 }
 
-// TODO: add logs in handlers
-
 func (h *Handler) metricsHandler(c fiber.Ctx) error {
 	// Use our custom metrics handler
 	return h.promClient.MetricsHandler()(c)
