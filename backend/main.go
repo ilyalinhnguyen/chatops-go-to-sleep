@@ -1,18 +1,17 @@
 package main
 
 import (
-	"log/slog"
-	"os"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/handlers"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/middleware"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/config"
+	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/logger/handlers/slogpretty"
 )
 
 func main() {
 	cfg := config.NewConfig()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	logger := slogpretty.SetupLogger("dev")
 
 	auth := middleware.NewAuthenticationMiddleware(cfg.ValidAPIKeys)
 	app := handlers.NewHandler(logger, auth)
