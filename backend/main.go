@@ -11,7 +11,7 @@ import (
 func main() {
 	cfg := config.NewConfig()
 
-	logger := slogpretty.SetupLogger("dev")
+	logger := slogpretty.SetupLogger(cfg.DebugLevel)
 
 	auth := middleware.NewAuthenticationMiddleware(cfg.ValidAPIKeys)
 	app := handlers.NewHandler(logger, auth)
