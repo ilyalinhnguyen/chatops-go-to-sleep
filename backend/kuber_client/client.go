@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/retry"
 )
+//TODO: add retry counter to user
 
 // Client provides methods to interact with a Kubernetes cluster
 type Client struct {

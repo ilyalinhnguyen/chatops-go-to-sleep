@@ -3,18 +3,22 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	kuberclient "github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/kuber_client"
 )
 
 type MetricsHandler struct {
+	log        *slog.Logger
 	kubeClient *kuberclient.Client
 }
 
-func NewMetricsHandler(client *kuberclient.Client) *MetricsHandler {
+func NewMetricsHandler(log *slog.Logger, client *kuberclient.Client) *MetricsHandler {
 	return &MetricsHandler{
+		log:        log,
 		kubeClient: client,
 	}
 }
@@ -57,7 +61,11 @@ type DeploymentMetrics struct {
 }
 
 func (h *MetricsHandler) GetClusterMetrics(c fiber.Ctx) error {
+	op := "GetClusterMetrics" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	if h.kubeClient == nil {
+		log.Error("Kubernetes client not available", "error", "kuber client is nil")
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": "Kubernetes client not available",
 		})
@@ -66,6 +74,7 @@ func (h *MetricsHandler) GetClusterMetrics(c fiber.Ctx) error {
 	ctx := context.Background()
 	metrics, err := h.kubeClient.GetClusterMetrics(ctx)
 	if err != nil {
+		log.Error("Failed to fetch cluster metrics", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fmt.Sprintf("Failed to fetch cluster metrics: %v", err),
 		})
@@ -87,7 +96,11 @@ func (h *MetricsHandler) GetClusterMetrics(c fiber.Ctx) error {
 }
 
 func (h *MetricsHandler) GetNodeMetrics(c fiber.Ctx) error {
+	op := "GetNodeMetrics" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	if h.kubeClient == nil {
+		log.Error("Kubernetes client not available", "error", "kuber client is nil")
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": "Kubernetes client not available",
 		})
@@ -98,6 +111,7 @@ func (h *MetricsHandler) GetNodeMetrics(c fiber.Ctx) error {
 
 	metrics, err := h.kubeClient.GetNodeMetrics(ctx, nodeName)
 	if err != nil {
+		log.Error("Failed to fetch node metrics", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fmt.Sprintf("Failed to fetch node metrics: %v", err),
 		})
@@ -130,7 +144,11 @@ func (h *MetricsHandler) GetNodeMetrics(c fiber.Ctx) error {
 }
 
 func (h *MetricsHandler) GetPodMetrics(c fiber.Ctx) error {
+	op := "GetPodMetrics" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	if h.kubeClient == nil {
+		log.Error("Kubernetes client not available", "error", "kuber client is nil")
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": "Kubernetes client not available",
 		})
@@ -141,6 +159,7 @@ func (h *MetricsHandler) GetPodMetrics(c fiber.Ctx) error {
 
 	metrics, err := h.kubeClient.GetPodMetrics(ctx, namespace)
 	if err != nil {
+		log.Error("Failed to fetch pod metrics", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fmt.Sprintf("Failed to fetch pod metrics: %v", err),
 		})
@@ -190,7 +209,11 @@ func (h *MetricsHandler) GetPodMetrics(c fiber.Ctx) error {
 }
 
 func (h *MetricsHandler) GetNamespaceMetrics(c fiber.Ctx) error {
+	op := "GetNamespaceMetrics" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	if h.kubeClient == nil {
+		log.Error("Kubernetes client not available", "error", "kuber client is nil")
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": "Kubernetes client not available",
 		})
@@ -201,6 +224,7 @@ func (h *MetricsHandler) GetNamespaceMetrics(c fiber.Ctx) error {
 	// Get pod information to group by namespace
 	pods, err := h.kubeClient.GetPodMetrics(ctx, "")
 	if err != nil {
+		log.Error("Failed to fetch pod metrics", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fmt.Sprintf("Failed to fetch pod metrics: %v", err),
 		})
@@ -254,7 +278,11 @@ func (h *MetricsHandler) GetNamespaceMetrics(c fiber.Ctx) error {
 
 // GetDeployments returns a list of all deployments or deployments in a specific namespace
 func (h *MetricsHandler) GetDeploymentsMetrics(c fiber.Ctx) error {
+	op := "GetDeploymentsMetrics" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	if h.kubeClient == nil {
+		log.Error("Kubernetes client not available", "error", "kuber client is nil")
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": "Kubernetes client not available",
 		})
@@ -265,6 +293,7 @@ func (h *MetricsHandler) GetDeploymentsMetrics(c fiber.Ctx) error {
 
 	deployments, err := h.kubeClient.ListDeployments(ctx, namespace)
 	if err != nil {
+		log.Error("Failed to fetch deployments", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fmt.Sprintf("Failed to fetch deployments: %v", err),
 		})
@@ -288,7 +317,11 @@ func (h *MetricsHandler) GetDeploymentsMetrics(c fiber.Ctx) error {
 
 // GetDeploymentStatus retrieves detailed status for a specific deployment
 func (h *MetricsHandler) GetDeploymentStatus(c fiber.Ctx) error {
+	op := "GetDeploymentStatus" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	if h.kubeClient == nil {
+		log.Error("Kubernetes client not available", "error", "kuber client is nil")
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": "Kubernetes client not available",
 		})
@@ -299,6 +332,7 @@ func (h *MetricsHandler) GetDeploymentStatus(c fiber.Ctx) error {
 	name := c.Params("name")
 
 	if name == "" {
+		log.Error("Failed to get name", "error", "name is empty string")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Deployment name is required",
 		})
@@ -306,6 +340,7 @@ func (h *MetricsHandler) GetDeploymentStatus(c fiber.Ctx) error {
 
 	status, err := h.kubeClient.GetDeploymentStatus(ctx, namespace, name)
 	if err != nil {
+		log.Error("Failed to get service status", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Failed to get service status",
