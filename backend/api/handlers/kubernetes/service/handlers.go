@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	kuberclient "github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/kuber_client"
 )
 
@@ -64,9 +65,12 @@ type StatusRequest struct {
 }
 
 func (h *Handler) ScaleService(c fiber.Ctx) error {
+	op := "ScaleService" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	var req ScaleRequest
 	if err := c.Bind().Body(&req); err != nil {
-		h.log.Error("Failed to parse scale request", "error", err)
+		log.Error("Failed to parse scale request", "error", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid request format",
@@ -75,6 +79,7 @@ func (h *Handler) ScaleService(c fiber.Ctx) error {
 	}
 
 	if req.Name == "" {
+		log.Error("Invalid name", "error", "name is empty string")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Service name is required",
@@ -82,6 +87,7 @@ func (h *Handler) ScaleService(c fiber.Ctx) error {
 	}
 
 	if req.Replicas < 0 {
+		log.Error("Invalid replicas", "error", "replicas num is negative")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Replicas must be a non-negative integer",
@@ -98,7 +104,7 @@ func (h *Handler) ScaleService(c fiber.Ctx) error {
 	})
 
 	if err != nil {
-		h.log.Error("Failed to scale service", "error", err, "service", req.Name, "namespace", req.Namespace)
+		log.Error("Failed to scale service", "error", err, "service", req.Name, "namespace", req.Namespace)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Failed to scale service",
@@ -106,7 +112,7 @@ func (h *Handler) ScaleService(c fiber.Ctx) error {
 		})
 	}
 
-	h.log.Info("Service scaled successfully", "service", req.Name, "namespace", req.Namespace, "replicas", req.Replicas)
+	log.Info("Service scaled successfully", "service", req.Name, "namespace", req.Namespace, "replicas", req.Replicas)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Service scaled successfully",
@@ -119,9 +125,12 @@ func (h *Handler) ScaleService(c fiber.Ctx) error {
 }
 
 func (h *Handler) RestartService(c fiber.Ctx) error {
+	op := "RestartService" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	var req RestartRequest
 	if err := c.Bind().Body(&req); err != nil {
-		h.log.Error("Failed to parse restart request", "error", err)
+		log.Error("Failed to parse restart request", "error", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid request format",
@@ -130,6 +139,7 @@ func (h *Handler) RestartService(c fiber.Ctx) error {
 	}
 
 	if req.Name == "" {
+		log.Error("Invalid name", "error", "name is empty string")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Service name is required",
@@ -145,7 +155,7 @@ func (h *Handler) RestartService(c fiber.Ctx) error {
 	})
 
 	if err != nil {
-		h.log.Error("Failed to restart service", "error", err, "service", req.Name, "namespace", req.Namespace)
+		log.Error("Failed to restart service", "error", err, "service", req.Name, "namespace", req.Namespace)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Failed to restart service",
@@ -153,7 +163,7 @@ func (h *Handler) RestartService(c fiber.Ctx) error {
 		})
 	}
 
-	h.log.Info("Service restarted successfully", "service", req.Name, "namespace", req.Namespace)
+	log.Info("Service restarted successfully", "service", req.Name, "namespace", req.Namespace)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Service restarted successfully",
@@ -165,9 +175,12 @@ func (h *Handler) RestartService(c fiber.Ctx) error {
 }
 
 func (h *Handler) RollbackService(c fiber.Ctx) error {
+	op := "RollbackService" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	var req RollbackRequest
 	if err := c.Bind().Body(&req); err != nil {
-		h.log.Error("Failed to parse rollback request", "error", err)
+		log.Error("Failed to parse rollback request", "error", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid request format",
@@ -176,6 +189,7 @@ func (h *Handler) RollbackService(c fiber.Ctx) error {
 	}
 
 	if req.Name == "" {
+		log.Error("Invalid name", "error", "name is empty string")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Service name is required",
@@ -194,7 +208,7 @@ func (h *Handler) RollbackService(c fiber.Ctx) error {
 	})
 
 	if err != nil {
-		h.log.Error("Failed to rollback service", "error", err, "service", req.Name, "namespace", req.Namespace)
+		log.Error("Failed to rollback service", "error", err, "service", req.Name, "namespace", req.Namespace)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Failed to rollback service",
@@ -202,7 +216,7 @@ func (h *Handler) RollbackService(c fiber.Ctx) error {
 		})
 	}
 
-	h.log.Info("Service rolled back successfully", "service", req.Name, "namespace", req.Namespace)
+	log.Info("Service rolled back successfully", "service", req.Name, "namespace", req.Namespace)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Service rolled back successfully",
@@ -217,9 +231,12 @@ func (h *Handler) RollbackService(c fiber.Ctx) error {
 }
 
 func (h *Handler) UpdateService(c fiber.Ctx) error {
+	op := "UpdateService" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	var req UpdateRequest
 	if err := c.Bind().Body(&req); err != nil {
-		h.log.Error("Failed to parse update request", "error", err)
+		log.Error("Failed to parse update request", "error", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid request format",
@@ -228,6 +245,7 @@ func (h *Handler) UpdateService(c fiber.Ctx) error {
 	}
 
 	if req.Name == "" {
+		log.Error("Invalid name", "error", "name is empty string")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Service name is required",
@@ -235,6 +253,7 @@ func (h *Handler) UpdateService(c fiber.Ctx) error {
 	}
 
 	if req.Image == "" && req.Version == "" {
+		log.Error("Invalid image and version", "error", "image or version is empty string")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Either image or version must be specified",
@@ -252,7 +271,7 @@ func (h *Handler) UpdateService(c fiber.Ctx) error {
 	})
 
 	if err != nil {
-		h.log.Error("Failed to update service", "error", err, "service", req.Name, "namespace", req.Namespace)
+		log.Error("Failed to update service", "error", err, "service", req.Name, "namespace", req.Namespace)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Failed to update service",
@@ -260,7 +279,7 @@ func (h *Handler) UpdateService(c fiber.Ctx) error {
 		})
 	}
 
-	h.log.Info("Service updated successfully", "service", req.Name, "namespace", req.Namespace)
+	log.Info("Service updated successfully", "service", req.Name, "namespace", req.Namespace)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Service updated successfully",
@@ -274,9 +293,12 @@ func (h *Handler) UpdateService(c fiber.Ctx) error {
 }
 
 func (h *Handler) GetServiceStatus(c fiber.Ctx) error {
+	op := "GetServiceStatus" + uuid.NewString()
+	log := h.log.With(slog.String("op", op))
+
 	var req StatusRequest
 	if err := c.Bind().Body(&req); err != nil {
-		h.log.Error("Failed to parse status request", "error", err)
+		log.Error("Failed to parse status request", "error", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid request format",
@@ -285,6 +307,7 @@ func (h *Handler) GetServiceStatus(c fiber.Ctx) error {
 	}
 
 	if req.Name == "" {
+		log.Error("Invalid name", "error", "name is empty string")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Service name is required",
@@ -296,7 +319,7 @@ func (h *Handler) GetServiceStatus(c fiber.Ctx) error {
 
 	status, err := h.kubeClient.GetDeploymentStatus(ctx, req.Namespace, req.Name)
 	if err != nil {
-		h.log.Error("Failed to get service status", "error", err, "service", req.Name, "namespace", req.Namespace)
+		log.Error("Failed to get service status", "error", err, "service", req.Name, "namespace", req.Namespace)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Failed to get service status",
@@ -304,7 +327,7 @@ func (h *Handler) GetServiceStatus(c fiber.Ctx) error {
 		})
 	}
 
-	h.log.Info("Service status retrieved successfully", "service", req.Name, "namespace", req.Namespace)
+	log.Info("Service status retrieved successfully", "service", req.Name, "namespace", req.Namespace)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"status":  "success",
 		"message": "Service status retrieved successfully",
