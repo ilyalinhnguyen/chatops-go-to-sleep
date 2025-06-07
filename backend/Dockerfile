@@ -12,5 +12,6 @@ FROM alpine:3.22
 WORKDIR /app
 COPY --from=build /app/chatops .
 COPY --from=build /app/config ./config
-EXPOSE 8000  
+COPY .env .
+EXPOSE 8000
 CMD ["./chatops"]

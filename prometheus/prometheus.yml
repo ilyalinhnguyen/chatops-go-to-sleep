@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "backend"
+    static_configs:
+      - targets: ["backend:8000"]
+    metrics_path: /api/metrics
+
+  # Add sample application metrics
+  - job_name: "sample-app"
+    static_configs:
+      - targets: ["prometheus:9090"]
+    metrics_path: /metrics
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'promhttp_.*'
+        action: keep
