@@ -1,15 +1,25 @@
 import asyncio
+import logging
+import os
+import sys
 
+import dotenv
 from aiogram import Bot, Dispatcher
-
-dp = Dispatcher()
+from routes import router
 
 
 async def main() -> None:
-    TOKEN = "..."
-    bot = Bot(token=TOKEN)
-    await dp.start_polling(bot)
-    print("Hello from tg-bot!")
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+    dotenv.load_dotenv()
+
+    bot_token = os.getenv("BOT_TOKEN")
+    if bot_token is None:
+        raise RuntimeError()
+
+    dp = Dispatcher()
+    dp.include_router(router)
+
+    await dp.start_polling(Bot(token=bot_token))
 
 
 if __name__ == "__main__":
