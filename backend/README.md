@@ -31,6 +31,211 @@ All endpoints except `/api/ping` and `/api/metrics` require authentication with 
 - `POST /api/v1/restart` - Restart application services
 - `POST /api/v1/rollback` - Rollback to previous version
 
+### Kubernetes Service Operations
+
+The following endpoints allow you to manage Kubernetes services:
+
+#### Scale Service
+
+`POST /api/v1/kubernetes/service/scale`
+
+Scales a Kubernetes deployment to the specified number of replicas.
+
+**Request Body:**
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment",
+  "replicas": 3
+}
+```
+
+**Response Example:**
+
+```json
+{
+  "status": "success",
+  "message": "Service scaled successfully",
+  "data": {
+    "name": "my-deployment",
+    "namespace": "default",
+    "replicas": 3
+  }
+}
+```
+
+#### Restart Service
+
+`POST /api/v1/kubernetes/service/restart`
+
+Restarts all pods in a Kubernetes deployment by adding a restart annotation.
+
+**Request Body:**
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment"
+}
+```
+
+**Response Example:**
+
+```json
+{
+  "status": "success",
+  "message": "Service restarted successfully",
+  "data": {
+    "name": "my-deployment",
+    "namespace": "default"
+  }
+}
+```
+
+#### Rollback Service
+
+`POST /api/v1/kubernetes/service/rollback`
+
+Rolls back a Kubernetes deployment to a specified revision or the previous revision.
+
+**Request Body - Default Rollback (to previous revision):**
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment"
+}
+```
+
+**Request Body - Rollback to Specific Revision ID:**
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment",
+  "revisionId": "my-deployment-7d9c4b5f96"
+}
+```
+
+**Request Body - Rollback to Specific Image:**
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment",
+  "revisionImage": "company/my-service:v1.2.3"
+}
+```
+
+**Request Body - Rollback to Specific Version:**
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment",
+  "version": "v1.2.3"
+}
+```
+
+**Response Example:**
+
+```json
+{
+  "status": "success",
+  "message": "Service rolled back successfully",
+  "data": {
+    "name": "my-deployment",
+    "namespace": "default",
+    "revisionId": "my-deployment-7d9c4b5f96",
+    "revisionImage": "",
+    "version": ""
+  }
+}
+```
+
+**Notes:**
+
+- The deployment must have at least two revisions to rollback
+- If no specific revision is specified, it defaults to the previous revision
+- You can specify one of: `revisionId`, `revisionImage`, or `version`
+- `revisionId` can be the full ReplicaSet name or the revision number
+- When using `version`, the system will search for a revision with a matching image tag
+
+#### Update Service
+
+`POST /api/v1/kubernetes/service/update`
+
+Updates a Kubernetes deployment with a new image or version.
+
+**Request Body:**
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment",
+  "image": "myapp:latest"
+}
+```
+
+OR
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment",
+  "version": "v2.0.1"
+}
+```
+
+**Response Example:**
+
+```json
+{
+  "status": "success",
+  "message": "Service updated successfully",
+  "data": {
+    "name": "my-deployment",
+    "namespace": "default",
+    "image": "myapp:latest",
+    "version": ""
+  }
+}
+```
+
+#### Get Service Status
+
+`POST /api/v1/kubernetes/service/status`
+
+Gets the current status of a Kubernetes deployment.
+
+**Request Body:**
+
+```json
+{
+  "namespace": "default",
+  "name": "my-deployment"
+}
+```
+
+**Response Example:**
+
+```json
+{
+  "status": "success",
+  "message": "Service status retrieved successfully",
+  "data": {
+    "name": "my-deployment",
+    "namespace": "default",
+    "replicas": 3,
+    "available": 3,
+    "ready": 3,
+    "updated": 3,
+    "unavailable": 0
+  }
+}
+```
+
 ### Prometheus Metrics Endpoints
 
 The following endpoints allow you to retrieve metrics directly from Prometheus:
@@ -79,6 +284,7 @@ Returns a list of all available metric names from your Prometheus server.
 Returns the current value for a specific metric by name.
 
 **Response Example:**
+
 ```json
 {
   "resultType": "vector",
@@ -89,10 +295,7 @@ Returns the current value for a specific metric by name.
         "instance": "localhost:9090",
         "job": "prometheus"
       },
-      "value": [
-        1749298784.856,
-        "1"
-      ]
+      "value": [1749298784.856, "1"]
     }
   ]
 }
@@ -105,6 +308,7 @@ Returns the current value for a specific metric by name.
 Execute a custom PromQL query against your Prometheus server.
 
 **Request Body:**
+
 ```json
 {
   "query": "rate(process_cpu_seconds_total[5m])"
@@ -112,6 +316,7 @@ Execute a custom PromQL query against your Prometheus server.
 ```
 
 **Response Example:**
+
 ```json
 {
   "status": "success",
@@ -123,10 +328,7 @@ Execute a custom PromQL query against your Prometheus server.
           "instance": "localhost:9090",
           "job": "prometheus"
         },
-        "value": [
-          1749298784.859,
-          "0.00044443456812070885"
-        ]
+        "value": [1749298784.859, "0.00044443456812070885"]
       }
     ]
   }
@@ -144,6 +346,7 @@ The following endpoints allow you to retrieve metrics from Prometheus about your
 Returns overall metrics for the entire Kubernetes cluster.
 
 **Response Example:**
+
 ```json
 {
   "cpuUsage": 45.2,
@@ -161,25 +364,25 @@ Returns overall metrics for the entire Kubernetes cluster.
 Returns metrics for all nodes in the cluster.
 
 **Response Example:**
+
 ```json
 [
   {
     "name": "worker-node-1",
-"cpuUsage": 78.5,
-"memoryUsage": 82.3,
-"diskUsage": 56.7,
-"podCount": 15
-},
-{
-"name": "worker-node-2",
-"cpuUsage": 42.1,
-"memoryUsage": 51.9,
-"diskUsage": 43.2,
-"podCount": 12
-}
+    "cpuUsage": 78.5,
+    "memoryUsage": 82.3,
+    "diskUsage": 56.7,
+    "podCount": 15
+  },
+  {
+    "name": "worker-node-2",
+    "cpuUsage": 42.1,
+    "memoryUsage": 51.9,
+    "diskUsage": 43.2,
+    "podCount": 12
+  }
 ]
-
-````
+```
 
 #### Pod Metrics
 
@@ -188,9 +391,11 @@ Returns metrics for all nodes in the cluster.
 Returns metrics for all pods in the cluster.
 
 **Query Parameters:**
+
 - `namespace` (optional): Filter pods by namespace
 
 **Response Example:**
+
 ```json
 [
   {
@@ -210,7 +415,7 @@ Returns metrics for all pods in the cluster.
     "containerCount": 1
   }
 ]
-````
+```
 
 #### Namespace Metrics
 
@@ -243,6 +448,7 @@ The application reads configuration from environment variables:
 
 - `DEBUG_LEVEL` - Log level (default: "prod")
 - `PROMETHEUS_URL` - URL of the Prometheus server (default: "http://localhost:9090")
+- `KUBECONFIG` - Path to Kubernetes configuration file (optional, will use in-cluster config if running in Kubernetes)
 
 API keys are stored in `config/keys.json`.
 
