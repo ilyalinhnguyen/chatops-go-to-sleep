@@ -1,6 +1,6 @@
 from aiogram import Router
 
-from . import start
+from . import rollback, start, status
 
 router = Router()
-router.include_routers(start.router)
+router.include_routers(rollback.router, start.router, status.router)
