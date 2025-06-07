@@ -9,13 +9,11 @@ import (
 	kuberclient "github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/kuber_client"
 )
 
-// Handler manages Kubernetes service operations
 type Handler struct {
 	log        *slog.Logger
 	kubeClient *kuberclient.Client
 }
 
-// NewHandler creates a new Kubernetes service handler
 func NewHandler(log *slog.Logger) (*Handler, error) {
 	kubeClient, err := kuberclient.NewClient()
 	if err != nil {
@@ -28,29 +26,25 @@ func NewHandler(log *slog.Logger) (*Handler, error) {
 	}, nil
 }
 
-// ScaleRequest defines the request body for scaling operations
 type ScaleRequest struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 	Replicas  int32  `json:"replicas"`
 }
 
-// RestartRequest defines the request body for restart operations
 type RestartRequest struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 }
 
-// RollbackRequest defines the request body for rollback operations
 type RollbackRequest struct {
 	Namespace     string `json:"namespace"`
 	Name          string `json:"name"`
-	RevisionID    string `json:"revisionId,omitempty"`    // Optional: Specific revision ID to roll back to
-	RevisionImage string `json:"revisionImage,omitempty"` // Optional: Specific image to roll back to
-	Version       string `json:"version,omitempty"`       // Optional: Specific version to roll back to
+	RevisionID    string `json:"revisionId,omitempty"`    // Specific revision ID
+	RevisionImage string `json:"revisionImage,omitempty"` // Specific image
+	Version       string `json:"version,omitempty"`       // Specific version
 }
 
-// UpdateRequest defines the request body for update operations
 type UpdateRequest struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
@@ -58,13 +52,11 @@ type UpdateRequest struct {
 	Version   string `json:"version,omitempty"`
 }
 
-// StatusRequest defines the request body for status operations
 type StatusRequest struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 }
 
-// ScaleService scales a Kubernetes service
 func (h *Handler) ScaleService(c fiber.Ctx) error {
 	var req ScaleRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -76,7 +68,6 @@ func (h *Handler) ScaleService(c fiber.Ctx) error {
 		})
 	}
 
-	// Validate request
 	if req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -91,11 +82,9 @@ func (h *Handler) ScaleService(c fiber.Ctx) error {
 		})
 	}
 
-	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Call Kubernetes client
 	err := h.kubeClient.ScaleDeployment(ctx, kuberclient.ServiceConfig{
 		Namespace: req.Namespace,
 		Name:      req.Name,
@@ -123,7 +112,6 @@ func (h *Handler) ScaleService(c fiber.Ctx) error {
 	})
 }
 
-// RestartService restarts a Kubernetes service
 func (h *Handler) RestartService(c fiber.Ctx) error {
 	var req RestartRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -135,7 +123,6 @@ func (h *Handler) RestartService(c fiber.Ctx) error {
 		})
 	}
 
-	// Validate request
 	if req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -143,11 +130,9 @@ func (h *Handler) RestartService(c fiber.Ctx) error {
 		})
 	}
 
-	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Call Kubernetes client
 	err := h.kubeClient.RestartDeployment(ctx, kuberclient.ServiceConfig{
 		Namespace: req.Namespace,
 		Name:      req.Name,
@@ -173,7 +158,6 @@ func (h *Handler) RestartService(c fiber.Ctx) error {
 	})
 }
 
-// RollbackService rolls back a Kubernetes service to a previous version
 func (h *Handler) RollbackService(c fiber.Ctx) error {
 	var req RollbackRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -185,7 +169,6 @@ func (h *Handler) RollbackService(c fiber.Ctx) error {
 		})
 	}
 
-	// Validate request
 	if req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -193,11 +176,9 @@ func (h *Handler) RollbackService(c fiber.Ctx) error {
 		})
 	}
 
-	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Call Kubernetes client
 	err := h.kubeClient.RollbackDeployment(ctx, kuberclient.ServiceConfig{
 		Namespace:     req.Namespace,
 		Name:          req.Name,
@@ -229,7 +210,6 @@ func (h *Handler) RollbackService(c fiber.Ctx) error {
 	})
 }
 
-// UpdateService updates a Kubernetes service with a new image or version
 func (h *Handler) UpdateService(c fiber.Ctx) error {
 	var req UpdateRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -241,7 +221,6 @@ func (h *Handler) UpdateService(c fiber.Ctx) error {
 		})
 	}
 
-	// Validate request
 	if req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -256,11 +235,9 @@ func (h *Handler) UpdateService(c fiber.Ctx) error {
 		})
 	}
 
-	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Call Kubernetes client
 	err := h.kubeClient.UpdateDeployment(ctx, kuberclient.ServiceConfig{
 		Namespace: req.Namespace,
 		Name:      req.Name,
@@ -290,7 +267,6 @@ func (h *Handler) UpdateService(c fiber.Ctx) error {
 	})
 }
 
-// GetServiceStatus gets the status of a Kubernetes service
 func (h *Handler) GetServiceStatus(c fiber.Ctx) error {
 	var req StatusRequest
 	if err := c.Bind().Body(&req); err != nil {
@@ -302,7 +278,6 @@ func (h *Handler) GetServiceStatus(c fiber.Ctx) error {
 		})
 	}
 
-	// Validate request
 	if req.Name == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
@@ -310,11 +285,9 @@ func (h *Handler) GetServiceStatus(c fiber.Ctx) error {
 		})
 	}
 
-	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Call Kubernetes client
 	status, err := h.kubeClient.GetDeploymentStatus(ctx, req.Namespace, req.Name)
 	if err != nil {
 		h.log.Error("Failed to get service status", "error", err, "service", req.Name, "namespace", req.Namespace)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/gofiber/fiber/v3"
@@ -10,6 +11,7 @@ import (
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/middleware"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/middleware/metrics"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/config"
+	kuberclient "github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/kuber_client"
 	prometheusclient "github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/prometheus_client"
 )
 
@@ -18,31 +20,47 @@ type Handler struct {
 	authMiddleware *middleware.AuthenticationMiddleware
 	router         *fiber.App
 	promClient     *prometheusclient.Client
+	kubeClient     *kuberclient.Client
 	kubeMetrics    *kubernetes.MetricsHandler
 	promMetrics    *prometheus.MetricsHandler
 	kubeService    *service.Handler
 }
 
 func (h *Handler) Run() error {
+
+	for _, route := range h.router.GetRoutes() {
+		fmt.Printf("[%s] %s\n", route.Method, route.Path)
+	}
+
 	return h.router.Listen(":8000")
 }
 
 func NewHandler(log *slog.Logger, auth *middleware.AuthenticationMiddleware) *Handler {
 	cfg := config.NewConfig()
 	promClient := prometheusclient.NewClient()
+	
+	// Initialize Kubernetes client
+	kubeClient, err := kuberclient.NewClient()
+	if err != nil {
+		log.Error("Failed to initialize Kubernetes client", "error", err)
+		// Continue without Kubernetes client - handlers will check for nil
+	}
+	
+	// Initialize metrics handlers - now using Kubernetes client directly instead of Prometheus
 	kubeMetrics := kubernetes.NewMetricsHandler(cfg.PrometheusURL)
 	promMetrics := prometheus.NewMetricsHandler(cfg.PrometheusURL)
-	
+
 	kubeService, err := service.NewHandler(log)
 	if err != nil {
 		log.Error("Failed to initialize Kubernetes service handler", "error", err)
 		// Continue without Kubernetes service handler
 	}
-	
+
 	return &Handler{
 		log:            log,
 		authMiddleware: auth,
 		promClient:     promClient,
+		kubeClient:     kubeClient,
 		kubeMetrics:    kubeMetrics,
 		promMetrics:    promMetrics,
 		kubeService:    kubeService,
@@ -73,20 +91,20 @@ func (h *Handler) InitRoutes(cfg fiber.Config) {
 
 	// Kubernetes metrics endpoints
 	kubernetes := v1.Group("/kubernetes")
-	kubernetes.Get("/metrics/cluster", h.kubeMetrics.GetClusterMetrics)
-	kubernetes.Get("/metrics/nodes", h.kubeMetrics.GetNodeMetrics)
-	kubernetes.Get("/metrics/pods", h.kubeMetrics.GetPodMetrics)
-	kubernetes.Get("/metrics/namespaces", h.kubeMetrics.GetNamespaceMetrics)
-	
+
+	kubeMetrics := kubernetes.Group("/metrics")
+	kubeMetrics.Get("/cluster", h.kubeMetrics.GetClusterMetrics)
+	kubeMetrics.Get("/nodes", h.kubeMetrics.GetNodeMetrics)
+	kubeMetrics.Get("/pods", h.kubeMetrics.GetPodMetrics)
+	kubeMetrics.Get("/namespaces", h.kubeMetrics.GetNamespaceMetrics)
+
 	// Kubernetes service operations
-	if h.kubeService != nil {
-		kubeServiceGroup := kubernetes.Group("/service")
-		kubeServiceGroup.Post("/scale", h.kubeService.ScaleService)
-		kubeServiceGroup.Post("/restart", h.kubeService.RestartService)
-		kubeServiceGroup.Post("/rollback", h.kubeService.RollbackService)
-		kubeServiceGroup.Post("/update", h.kubeService.UpdateService)
-		kubeServiceGroup.Post("/status", h.kubeService.GetServiceStatus)
-	}
+	kubeServiceGroup := kubernetes.Group("/service")
+	kubeServiceGroup.Post("/scale", h.kubeService.ScaleService)
+	kubeServiceGroup.Post("/restart", h.kubeService.RestartService)
+	kubeServiceGroup.Post("/rollback", h.kubeService.RollbackService)
+	kubeServiceGroup.Post("/update", h.kubeService.UpdateService)
+	kubeServiceGroup.Post("/status", h.kubeService.GetServiceStatus)
 
 	// Prometheus metrics endpoints
 	prometheusGroup := v1.Group("/prometheus")
@@ -111,20 +129,20 @@ func (h *Handler) scaleHandler(c fiber.Ctx) error {
 			"message": "Kubernetes service handler not available",
 		})
 	}
-	
+
 	var req struct {
 		Namespace string `json:"namespace"`
 		Name      string `json:"name"`
 		Replicas  int32  `json:"replicas"`
 	}
-	
+
 	if err := c.Bind().Body(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid request format",
 		})
 	}
-	
+
 	return h.kubeService.ScaleService(c)
 }
 
@@ -135,19 +153,19 @@ func (h *Handler) restartHandler(c fiber.Ctx) error {
 			"message": "Kubernetes service handler not available",
 		})
 	}
-	
+
 	var req struct {
 		Namespace string `json:"namespace"`
 		Name      string `json:"name"`
 	}
-	
+
 	if err := c.Bind().Body(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid request format",
 		})
 	}
-	
+
 	return h.kubeService.RestartService(c)
 }
 
@@ -158,7 +176,7 @@ func (h *Handler) rollbackHandler(c fiber.Ctx) error {
 			"message": "Kubernetes service handler not available",
 		})
 	}
-	
+
 	var req struct {
 		Namespace     string `json:"namespace"`
 		Name          string `json:"name"`
@@ -166,14 +184,14 @@ func (h *Handler) rollbackHandler(c fiber.Ctx) error {
 		RevisionImage string `json:"revisionImage,omitempty"`
 		Version       string `json:"version,omitempty"`
 	}
-	
+
 	if err := c.Bind().Body(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Invalid request format",
 		})
 	}
-	
+
 	return h.kubeService.RollbackService(c)
 }
 

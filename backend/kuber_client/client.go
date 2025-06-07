@@ -3,13 +3,17 @@ package kuberclient
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"path/filepath"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/retry"
 )
 
@@ -52,6 +56,23 @@ func NewClient() (*Client, error) {
 	// 		return nil, fmt.Errorf("failed to build config from kubeconfig: %v", err)
 	// 	}
 	// }
+
+	// Oh. I get it. Look for my Dockerfile. I think i need to copy config file inside of container.
+
+	// https://github.com/kubernetes/client-go/blob/master/examples/out-of-cluster-client-configuration/main.go
+
+	var kubeconfig *string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
+
+	config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err.Error())
+	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -136,8 +157,8 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 	if config.RevisionID != "" {
 		for i := range deploymentHistory.Items {
 			// Check if the ReplicaSet name or revision annotation matches the requested revision
-			if deploymentHistory.Items[i].Name == config.RevisionID || 
-			   deploymentHistory.Items[i].Annotations["deployment.kubernetes.io/revision"] == config.RevisionID {
+			if deploymentHistory.Items[i].Name == config.RevisionID ||
+				deploymentHistory.Items[i].Annotations["deployment.kubernetes.io/revision"] == config.RevisionID {
 				targetRevision = &deploymentHistory.Items[i]
 				break
 			}
@@ -145,7 +166,7 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 		if targetRevision == nil {
 			return fmt.Errorf("revision %s not found for deployment %s", config.RevisionID, config.Name)
 		}
-	// Case 2: Specific image requested
+		// Case 2: Specific image requested
 	} else if config.RevisionImage != "" || config.Version != "" {
 		targetImage := config.RevisionImage
 		if targetImage == "" && config.Version != "" {
@@ -178,11 +199,10 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 			}
 		}
 		if targetRevision == nil {
-			return fmt.Errorf("no revision found with image %s for deployment %s", 
-				config.RevisionImage != "" ? config.RevisionImage : config.Version, 
-				config.Name)
+			return fmt.Errorf("no revision found with image %s for deployment %s",
+				config.RevisionImage != "")
 		}
-	// Case 3: Default to previous revision
+		// Case 3: Default to previous revision
 	} else if len(deploymentHistory.Items) > 1 {
 		// Sort revisions by creation timestamp (newest first)
 		// For simplicity, we're just getting the previous revision
@@ -216,7 +236,7 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 		if deployment.Annotations == nil {
 			deployment.Annotations = make(map[string]string)
 		}
-		deployment.Annotations["kubernetes.io/change-cause"] = fmt.Sprintf("Rollback to revision %s", 
+		deployment.Annotations["kubernetes.io/change-cause"] = fmt.Sprintf("Rollback to revision %s",
 			targetRevision.Annotations["deployment.kubernetes.io/revision"])
 
 		// Update the deployment
@@ -299,4 +319,139 @@ func (c *Client) GetDeploymentStatus(ctx context.Context, namespace, name string
 	}
 
 	return result, nil
+}
+
+// GetClusterMetrics retrieves overall cluster metrics
+func (c *Client) GetClusterMetrics(ctx context.Context) (map[string]interface{}, error) {
+	// Get nodes to calculate total cluster capacity
+	nodes, err := c.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %v", err)
+	}
+
+	// Calculate total cluster capacity and allocatable resources
+	clusterMetrics := map[string]interface{}{
+		"nodes_total":    len(nodes.Items),
+		"nodes_ready":    0,
+		"pods_total":     0,
+		"pods_running":   0,
+		"pods_pending":   0,
+		"pods_failed":    0,
+		"pods_succeeded": 0,
+	}
+
+	// Count ready nodes
+	for _, node := range nodes.Items {
+		for _, condition := range node.Status.Conditions {
+			if condition.Type == "Ready" && condition.Status == "True" {
+				clusterMetrics["nodes_ready"] = clusterMetrics["nodes_ready"].(int) + 1
+				break
+			}
+		}
+	}
+
+	// Get pod information
+	pods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pods: %v", err)
+	}
+
+	clusterMetrics["pods_total"] = len(pods.Items)
+
+	// Count pods by phase
+	for _, pod := range pods.Items {
+		switch pod.Status.Phase {
+		case "Running":
+			clusterMetrics["pods_running"] = clusterMetrics["pods_running"].(int) + 1
+		case "Pending":
+			clusterMetrics["pods_pending"] = clusterMetrics["pods_pending"].(int) + 1
+		case "Failed":
+			clusterMetrics["pods_failed"] = clusterMetrics["pods_failed"].(int) + 1
+		case "Succeeded":
+			clusterMetrics["pods_succeeded"] = clusterMetrics["pods_succeeded"].(int) + 1
+		}
+	}
+
+	return clusterMetrics, nil
+}
+
+// GetNodeMetrics retrieves metrics for all nodes or a specific node
+func (c *Client) GetNodeMetrics(ctx context.Context, nodeName string) ([]map[string]interface{}, error) {
+	// Set up list options
+	listOptions := metav1.ListOptions{}
+	if nodeName != "" {
+		listOptions.FieldSelector = fmt.Sprintf("metadata.name=%s", nodeName)
+	}
+
+	// Get nodes
+	nodes, err := c.clientset.CoreV1().Nodes().List(ctx, listOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %v", err)
+	}
+
+	var nodeMetrics []map[string]interface{}
+
+	for _, node := range nodes.Items {
+		nodeInfo := map[string]interface{}{
+			"name":        node.Name,
+			"status":      getNodeStatus(node),
+			"allocatable": node.Status.Allocatable,
+			"capacity":    node.Status.Capacity,
+			"labels":      node.Labels,
+			"conditions":  node.Status.Conditions,
+		}
+
+		nodeMetrics = append(nodeMetrics, nodeInfo)
+	}
+
+	return nodeMetrics, nil
+}
+
+// Helper function to determine node status
+func getNodeStatus(node corev1.Node) string {
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == "Ready" {
+			if condition.Status == "True" {
+				return "Ready"
+			} else {
+				return "NotReady"
+			}
+		}
+	}
+	return "Unknown"
+}
+
+// GetPodMetrics retrieves metrics for all pods or pods in a specific namespace
+func (c *Client) GetPodMetrics(ctx context.Context, namespace string) ([]map[string]interface{}, error) {
+	// Get pods
+	var pods *corev1.PodList
+	var err error
+
+	if namespace != "" {
+		pods, err = c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	} else {
+		pods, err = c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pods: %v", err)
+	}
+
+	var podMetrics []map[string]interface{}
+
+	for _, pod := range pods.Items {
+		podInfo := map[string]interface{}{
+			"name":       pod.Name,
+			"namespace":  pod.Namespace,
+			"status":     string(pod.Status.Phase),
+			"hostIP":     pod.Status.HostIP,
+			"podIP":      pod.Status.PodIP,
+			"startTime":  pod.Status.StartTime,
+			"containers": len(pod.Spec.Containers),
+		}
+
+		podMetrics = append(podMetrics, podInfo)
+	}
+
+	return podMetrics, nil
 }

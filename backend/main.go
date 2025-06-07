@@ -25,6 +25,7 @@ func main() {
 	app.InitRoutes(fiber.Config{})
 
 	err := app.Run()
+
 	if err != nil {
 		logger.Error("Failed to start server", err)
 	}
