@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/fatih/color v1.18.0
 	github.com/gofiber/fiber/v3 v3.0.0-beta.4
+	github.com/joho/godotenv v1.5.1
 	github.com/prometheus/client_golang v1.19.0
 )
 
