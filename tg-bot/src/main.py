@@ -5,8 +5,7 @@ import sys
 
 import dotenv
 from aiogram import Bot, Dispatcher
-
-dp = Dispatcher()
+from routes import router
 
 
 async def main() -> None:
@@ -17,8 +16,10 @@ async def main() -> None:
     if bot_token is None:
         raise RuntimeError()
 
-    bot = Bot(token=bot_token)
-    await dp.start_polling(bot)
+    dp = Dispatcher()
+    dp.include_router(router)
+
+    await dp.start_polling(Bot(token=bot_token))
 
 
 if __name__ == "__main__":
