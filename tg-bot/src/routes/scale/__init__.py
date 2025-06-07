@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -36,7 +36,13 @@ class ScaleData:
         return ScaleData(service=tokens[1], n=int(n))
 
 
-@router.message(Command("scale"))
+@router.message(UserState.default, Command("scale"), F.text == "/scale")
+async def command_scale_pure(message: Message, state: FSMContext) -> None:
+    await state.set_state(UserState.scale_interactive)
+    raise NotImplementedError
+
+
+@router.message(UserState.default, Command("scale"))
 async def command_scale(message: Message, state: FSMContext) -> None:
     assert message.text is not None
 

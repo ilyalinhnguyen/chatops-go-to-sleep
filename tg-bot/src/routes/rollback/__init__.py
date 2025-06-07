@@ -2,10 +2,12 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from src.fsm import UserState
+
 router = Router()
 
 
-@router.message(Command("rollback"))
+@router.message(UserState.default, Command("rollback"))
 async def command_rollback(message: Message) -> None:
     assert message.text is not None
 
