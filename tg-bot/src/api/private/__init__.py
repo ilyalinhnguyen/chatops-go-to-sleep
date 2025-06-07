@@ -21,9 +21,9 @@ API: str = init_api_url()
 HEADERS: dict[str, str] = init_headers()
 
 
-def get(route: str) -> Response:
-    return requests.get(f"{API}/{route}", headers=HEADERS)
+def get(route: str, **kwargs) -> Response:
+    return requests.get(f"{API}/{route}", headers=HEADERS, **kwargs)
 
 
-def post(route: str) -> Response:
-    return requests.post(f"{API}/{route}", headers=HEADERS)
+def post(route: str, **kwargs) -> Response:
+    return requests.post(f"{API}/{route}", headers=HEADERS, **kwargs)

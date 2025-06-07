@@ -1,26 +1,19 @@
-from .. import private
+from src.api import private
 
-
-def metrics() -> None:
-    _response = private.get("metrics")
-    raise NotImplementedError
-
-
-def scale() -> None:
-    _response = private.post("scale")
-    raise NotImplementedError
-
-
-def restart() -> None:
-    _response = private.post("restart")
-    raise NotImplementedError
-
-
-def rollback() -> None:
-    _response = private.post("rollback")
-    raise NotImplementedError
+PREFIX: str = "v1"
 
 
 def ping() -> bool:
-    response = private.get("ping")
-    return response.ok
+    return private.get(f"{PREFIX}/ping").ok
+
+
+def scale() -> bool:
+    return private.post(f"{PREFIX}/scale").ok
+
+
+def restart() -> bool:
+    return private.post(f"{PREFIX}/restart").ok
+
+
+def rollback() -> bool:
+    return private.post(f"{PREFIX}/rollback").ok

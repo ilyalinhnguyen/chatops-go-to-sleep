@@ -1,0 +1,3 @@
+import metrics
+
+_ = metrics
