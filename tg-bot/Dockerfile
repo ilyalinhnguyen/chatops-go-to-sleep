@@ -5,4 +5,4 @@ COPY ./ ./
 
 RUN uv sync --frozen
 
-CMD ["uv", "run", "src/main.py"]
+CMD ["uv", "run", "--module", "src"]

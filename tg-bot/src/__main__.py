@@ -5,7 +5,8 @@ import sys
 
 import dotenv
 from aiogram import Bot, Dispatcher
-from routes import router
+
+from .routes import router
 
 
 async def main() -> None:
