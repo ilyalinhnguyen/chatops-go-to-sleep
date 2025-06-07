@@ -38,7 +38,7 @@ class ScaleData:
 
 @router.message(UserState.default, Command("scale"), F.text == "/scale")
 async def command_scale_pure(message: Message, state: FSMContext) -> None:
-    await state.set_state(UserState.scale_interactive)
+    await state.set_state(UserState.scale_prompt_service)
     raise NotImplementedError
 
 
@@ -57,7 +57,7 @@ async def command_scale(message: Message, state: FSMContext) -> None:
 
 @router.message(UserState.scale_bad_format)
 async def scale_bad_format(message: Message) -> None:
-    await message.reply("/scale <SERVICE_NAME> +<N>")
+    await message.answer("/scale <SERVICE_NAME> +<N>")
     raise NotImplementedError
 
 
@@ -66,6 +66,6 @@ async def scale_good_format(
     state: FSMContext,
     scale_data: ScaleData,
 ) -> None:
-    await message.reply(f"received /scale {scale_data.service} +{scale_data.n}")
+    await message.answer(f"received /scale {scale_data.service} +{scale_data.n}")
     await state.set_state(UserState.default)
     raise NotImplementedError

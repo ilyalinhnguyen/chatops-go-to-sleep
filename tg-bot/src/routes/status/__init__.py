@@ -9,4 +9,4 @@ router = Router()
 
 @router.message(UserState.default, Command("status"))
 async def command_status(message: Message) -> None:
-    await message.reply("received /status")
+    await message.answer("received /status")
