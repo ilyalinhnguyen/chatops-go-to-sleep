@@ -5,7 +5,7 @@ from requests import Response
 
 
 def init_api_url() -> str:
-    api = os.getenv("SERVER")
+    api = os.getenv("SERVER_URL")
     assert api is not None
     return api
 
