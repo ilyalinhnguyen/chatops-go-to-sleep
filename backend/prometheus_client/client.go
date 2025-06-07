@@ -1,15 +1,23 @@
 package prometheusclient
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 // Client provides methods to interact with Prometheus metrics
 type Client struct {
-	registry    *prometheus.Registry
-	httpMetrics *HTTPMetrics
-	appMetrics  *AppMetrics
+	registry      *prometheus.Registry
+	httpMetrics   *HTTPMetrics
+	appMetrics    *AppMetrics
+	prometheusURL string
+	httpClient    *http.Client
 }
 
 // HTTPMetrics contains HTTP-related metrics
@@ -27,8 +35,25 @@ type AppMetrics struct {
 	ErrorsTotal           prometheus.Counter
 }
 
+// Alert represents a Prometheus alert
+type Alert struct {
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
+	State       string            `json:"state"`
+	ActiveAt    time.Time         `json:"activeAt"`
+	Value       string            `json:"value"`
+}
+
+// AlertsResponse represents the Prometheus alerts API response
+type AlertsResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		Alerts []Alert `json:"alerts"`
+	} `json:"data"`
+}
+
 // NewClient creates a new Prometheus client
-func NewClient() *Client {
+func NewClient(prometheusURL string) *Client {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	registry.MustRegister(prometheus.NewGoCollector())
@@ -89,9 +114,11 @@ func NewClient() *Client {
 	)
 
 	return &Client{
-		registry:    registry,
-		httpMetrics: httpMetrics,
-		appMetrics:  appMetrics,
+		registry:      registry,
+		httpMetrics:   httpMetrics,
+		appMetrics:    appMetrics,
+		prometheusURL: prometheusURL,
+		httpClient:    &http.Client{},
 	}
 }
 
@@ -128,4 +155,176 @@ func (c *Client) IncrementRollbackOperations() {
 // IncrementErrors increments the error counter
 func (c *Client) IncrementErrors() {
 	c.appMetrics.ErrorsTotal.Inc()
+}
+
+
+// GetAllAlerts retrieves all alerts from Prometheus
+func (c *Client) GetAllAlerts(ctx context.Context) ([]Alert, error) {
+	if c.prometheusURL == "" {
+		return nil, fmt.Errorf("prometheus URL not set, use WithPrometheusURL()")
+	}
+
+	endpoint := fmt.Sprintf("%s/api/v1/alerts", c.prometheusURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error querying Prometheus: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error response from Prometheus: %s", resp.Status)
+	}
+
+	var response AlertsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("error decoding response: %v", err)
+	}
+
+	return response.Data.Alerts, nil
+}
+
+// GetActiveAlerts retrieves only the currently firing alerts from Prometheus
+func (c *Client) GetActiveAlerts(ctx context.Context) ([]Alert, error) {
+	// Get all alerts
+	alerts, err := c.GetAllAlerts(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter for only firing alerts
+	var activeAlerts []Alert
+	for _, alert := range alerts {
+		if alert.State == "firing" {
+			activeAlerts = append(activeAlerts, alert)
+		}
+	}
+
+	return activeAlerts, nil
+}
+
+// QueryAlerts executes a PromQL query and returns the results
+func (c *Client) QueryAlerts(ctx context.Context, query string) (map[string]interface{}, error) {
+	if c.prometheusURL == "" {
+		return nil, fmt.Errorf("prometheus URL not set, use WithPrometheusURL()")
+	}
+
+	endpoint := fmt.Sprintf("%s/api/v1/query", c.prometheusURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	q := req.URL.Query()
+	q.Add("query", query)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error querying Prometheus: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error response from Prometheus: %s", resp.Status)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("error decoding response: %v", err)
+	}
+
+	return result, nil
+}
+
+// GetActiveAlertsWithQuery retrieves only firing alerts using a direct PromQL query
+func (c *Client) GetActiveAlertsWithQuery(ctx context.Context) ([]Alert, error) {
+	// This PromQL query gets all firing alerts
+	const query = "ALERTS{state=\"firing\"}"
+
+	result, err := c.QueryAlerts(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert query results to Alert objects
+	var alerts []Alert
+
+	// Parse the nested data structure
+	if data, ok := result["data"].(map[string]interface{}); ok {
+		if resultList, ok := data["result"].([]interface{}); ok {
+			for _, item := range resultList {
+				if resultItem, ok := item.(map[string]interface{}); ok {
+					// Extract metric labels
+					var labels map[string]string
+					if metric, ok := resultItem["metric"].(map[string]interface{}); ok {
+						labels = make(map[string]string)
+						for k, v := range metric {
+							if strVal, ok := v.(string); ok {
+								labels[k] = strVal
+							}
+						}
+					}
+
+					// Extract value
+					var value string
+					if valueArr, ok := resultItem["value"].([]interface{}); ok && len(valueArr) >= 2 {
+						value = fmt.Sprintf("%v", valueArr[1])
+					}
+
+					alert := Alert{
+						Labels: labels,
+						State:  "firing", // These are all firing alerts
+						Value:  value,
+					}
+
+					alerts = append(alerts, alert)
+				}
+			}
+		}
+	}
+
+	return alerts, nil
+}
+
+// GetAlertRules retrieves all alert rules from Prometheus
+func (c *Client) GetAlertRules(ctx context.Context) (map[string]interface{}, error) {
+	if c.prometheusURL == "" {
+		return nil, fmt.Errorf("prometheus URL not set, use WithPrometheusURL()")
+	}
+
+	endpoint := fmt.Sprintf("%s/api/v1/rules", c.prometheusURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	// Add alerting filter to only get alerts
+	q := req.URL.Query()
+	q.Add("type", "alert")
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error querying Prometheus: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error response from Prometheus: %s", resp.Status)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("error decoding response: %v", err)
+	}
+
+	return result, nil
 }
