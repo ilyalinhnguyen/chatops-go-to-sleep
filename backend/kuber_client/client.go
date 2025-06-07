@@ -3,9 +3,10 @@ package kuberclient
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
+	"sync"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -33,55 +34,52 @@ type ServiceConfig struct {
 	RevisionImage string `json:"revisionImage,omitempty"` // For specific image rollback
 }
 
-// NewClient creates a new Kubernetes client
+// Singleton pattern for client
+var (
+	instance *Client
+	once     sync.Once
+	initErr  error
+)
+
+// NewClient creates a new Kubernetes client or returns the existing singleton instance
 func NewClient() (*Client, error) {
-	var config *rest.Config
-	var err error
+	once.Do(func() {
+		var config *rest.Config
 
-	// Try in-cluster config first (for running inside a pod)
-	// config, err = rest.InClusterConfig()
-	// if err != nil {
-	// 	// Fall back to kubeconfig file
-	// 	kubeconfig := os.Getenv("KUBECONFIG")
-	// 	if kubeconfig == "" {
-	// 		if home := homedir.HomeDir(); home != "" {
-	// 			kubeconfig = filepath.Join(home, ".kube", "config")
-	// 		} else {
-	// 			return nil, fmt.Errorf("could not locate kubeconfig file")
-	// 		}
-	// 	}
+		// Try in-cluster config first (for running inside a pod)
+		config, initErr = rest.InClusterConfig()
+		if initErr != nil {
+			// Fall back to kubeconfig file
+			kubeconfig := os.Getenv("KUBECONFIG")
+			if kubeconfig == "" {
+				if home := homedir.HomeDir(); home != "" {
+					kubeconfig = filepath.Join(home, ".kube", "config")
+				} else {
+					initErr = fmt.Errorf("could not locate kubeconfig file")
+					return
+				}
+			}
 
-	// 	config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to build config from kubeconfig: %v", err)
-	// 	}
-	// }
+			config, initErr = clientcmd.BuildConfigFromFlags("", kubeconfig)
+			if initErr != nil {
+				initErr = fmt.Errorf("failed to build config from kubeconfig: %v", initErr)
+				return
+			}
+		}
 
-	// Oh. I get it. Look for my Dockerfile. I think i need to copy config file inside of container.
+		var clientset *kubernetes.Clientset
+		clientset, initErr = kubernetes.NewForConfig(config)
+		if initErr != nil {
+			initErr = fmt.Errorf("failed to create Kubernetes client: %v", initErr)
+			return
+		}
 
-	// https://github.com/kubernetes/client-go/blob/master/examples/out-of-cluster-client-configuration/main.go
+		instance = &Client{
+			clientset: clientset,
+		}
+	})
 
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-	flag.Parse()
-
-	config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
-	}
-
-	return &Client{
-		clientset: clientset,
-	}, nil
+	return instance, initErr
 }
 
 // ScaleDeployment scales a deployment to the specified number of replicas
@@ -454,4 +452,47 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace string) ([]map[str
 	}
 
 	return podMetrics, nil
+}
+
+// DeploymentInfo holds basic deployment information
+type DeploymentInfo struct {
+	Name               string
+	Namespace          string
+	Replicas           int32
+	AvailableReplicas  int32
+	ReadyReplicas      int32
+	UpdatedReplicas    int32
+	CreationTimestamp  metav1.Time
+}
+
+// ListDeployments retrieves all deployments or deployments in a specific namespace
+func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]DeploymentInfo, error) {
+	var deployments *appsv1.DeploymentList
+	var err error
+
+	if namespace != "" {
+		deployments, err = c.clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+	} else {
+		deployments, err = c.clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list deployments: %v", err)
+	}
+
+	deploymentInfos := make([]DeploymentInfo, 0, len(deployments.Items))
+	for _, deployment := range deployments.Items {
+		info := DeploymentInfo{
+			Name:              deployment.Name,
+			Namespace:         deployment.Namespace,
+			Replicas:          *deployment.Spec.Replicas,
+			AvailableReplicas: deployment.Status.AvailableReplicas,
+			ReadyReplicas:     deployment.Status.ReadyReplicas,
+			UpdatedReplicas:   deployment.Status.UpdatedReplicas,
+			CreationTimestamp: deployment.CreationTimestamp,
+		}
+		deploymentInfos = append(deploymentInfos, info)
+	}
+
+	return deploymentInfos, nil
 }

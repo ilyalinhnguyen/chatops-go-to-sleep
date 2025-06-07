@@ -38,22 +38,28 @@ func (h *Handler) Run() error {
 func NewHandler(log *slog.Logger, auth *middleware.AuthenticationMiddleware) *Handler {
 	cfg := config.NewConfig()
 	promClient := prometheusclient.NewClient()
-	
-	// Initialize Kubernetes client
+
+	// Initialize Kubernetes client once
 	kubeClient, err := kuberclient.NewClient()
 	if err != nil {
 		log.Error("Failed to initialize Kubernetes client", "error", err)
-		// Continue without Kubernetes client - handlers will check for nil
+		// Continue without Kubernetes client
 	}
-	
-	// Initialize metrics handlers - now using Kubernetes client directly instead of Prometheus
-	kubeMetrics := kubernetes.NewMetricsHandler(cfg.PrometheusURL)
+
+	// Pass the Kubernetes client to both the metrics handler and service handler
+	kubeMetrics := kubernetes.NewMetricsHandler(kubeClient)
 	promMetrics := prometheus.NewMetricsHandler(cfg.PrometheusURL)
 
-	kubeService, err := service.NewHandler(log)
-	if err != nil {
-		log.Error("Failed to initialize Kubernetes service handler", "error", err)
-		// Continue without Kubernetes service handler
+	// Initialize Kubernetes service handler with the same client
+	var kubeService *service.Handler
+	if kubeClient != nil {
+		kubeService, err = service.NewHandler(log, kubeClient)
+		if err != nil {
+			log.Error("Failed to initialize Kubernetes service handler", "error", err)
+			// Continue without Kubernetes service handler
+		}
+	} else {
+		log.Warn("Skipping Kubernetes service handler initialization due to missing Kubernetes client")
 	}
 
 	return &Handler{
@@ -97,6 +103,9 @@ func (h *Handler) InitRoutes(cfg fiber.Config) {
 	kubeMetrics.Get("/nodes", h.kubeMetrics.GetNodeMetrics)
 	kubeMetrics.Get("/pods", h.kubeMetrics.GetPodMetrics)
 	kubeMetrics.Get("/namespaces", h.kubeMetrics.GetNamespaceMetrics)
+	kubeMetrics.Get("/deployments", h.kubeMetrics.GetDeploymentsMetrics)
+	kubeMetrics.Get("/deployments/:name", h.kubeMetrics.GetDeploymentStatus)
+
 
 	// Kubernetes service operations
 	kubeServiceGroup := kubernetes.Group("/service")

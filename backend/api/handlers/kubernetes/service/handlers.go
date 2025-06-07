@@ -14,10 +14,16 @@ type Handler struct {
 	kubeClient *kuberclient.Client
 }
 
-func NewHandler(log *slog.Logger) (*Handler, error) {
-	kubeClient, err := kuberclient.NewClient()
-	if err != nil {
-		return nil, err
+// NewHandler creates a new Kubernetes service handler
+// It accepts an existing kubeClient to avoid creating multiple instances
+func NewHandler(log *slog.Logger, kubeClient *kuberclient.Client) (*Handler, error) {
+	// If no client is provided, attempt to create one
+	var err error
+	if kubeClient == nil {
+		kubeClient, err = kuberclient.NewClient()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Handler{

@@ -76,7 +76,7 @@ Restarts all pods in a Kubernetes deployment by adding a restart annotation.
 ```json
 {
   "namespace": "default",
-  "name": "my-deployment"
+  "name": "my-deployment" <-- THIS IS SERVICE NAME (NOT POD)
 }
 ```
 
@@ -104,7 +104,7 @@ Rolls back a Kubernetes deployment to a specified revision or the previous revis
 ```json
 {
   "namespace": "default",
-  "name": "my-deployment"
+  "name": "my-deployment" <-- THIS IS SERVICE NAME (NOT POD)
 }
 ```
 
@@ -113,7 +113,7 @@ Rolls back a Kubernetes deployment to a specified revision or the previous revis
 ```json
 {
   "namespace": "default",
-  "name": "my-deployment",
+  "name": "my-deployment", <-- THIS IS SERVICE NAME (NOT POD)
   "revisionId": "my-deployment-7d9c4b5f96"
 }
 ```
@@ -123,7 +123,7 @@ Rolls back a Kubernetes deployment to a specified revision or the previous revis
 ```json
 {
   "namespace": "default",
-  "name": "my-deployment",
+  "name": "my-deployment", <-- THIS IS SERVICE NAME (NOT POD)
   "revisionImage": "company/my-service:v1.2.3"
 }
 ```
@@ -133,7 +133,7 @@ Rolls back a Kubernetes deployment to a specified revision or the previous revis
 ```json
 {
   "namespace": "default",
-  "name": "my-deployment",
+  "name": "my-deployment", <-- THIS IS SERVICE NAME (NOT POD)
   "version": "v1.2.3"
 }
 ```
@@ -173,7 +173,7 @@ Updates a Kubernetes deployment with a new image or version.
 ```json
 {
   "namespace": "default",
-  "name": "my-deployment",
+  "name": "my-deployment", <-- THIS IS SERVICE NAME (NOT POD)
   "image": "myapp:latest"
 }
 ```
@@ -183,7 +183,7 @@ OR
 ```json
 {
   "namespace": "default",
-  "name": "my-deployment",
+  "name": "my-deployment", <-- THIS IS SERVICE NAME (NOT POD)
   "version": "v2.0.1"
 }
 ```
@@ -207,6 +207,7 @@ OR
 
 `POST /api/v1/kubernetes/service/status`
 
+!!!!! The same as `/api/v1/kubernetes/metrics/status/:name` !!!!!
 Gets the current status of a Kubernetes deployment.
 
 **Request Body:**
@@ -214,7 +215,7 @@ Gets the current status of a Kubernetes deployment.
 ```json
 {
   "namespace": "default",
-  "name": "my-deployment"
+  "name": "my-deployment" <-- THIS IS SERVICE NAME (NOT POD)
 }
 ```
 
@@ -415,6 +416,81 @@ Returns metrics for all pods in the cluster.
     "containerCount": 1
   }
 ]
+```
+
+#### Deployment Metrics
+
+`GET /api/v1/kubernetes/metrics/deployment`
+
+Returns all the deployments
+
+USE THIS NAME TO MANIPULATE SERVICE (restart, scale, and etc)
+
+**Response Example:**
+
+```json
+[
+    {
+        "name": "nginx-test",
+        "namespace": "default",
+        "replicas": 6,
+        "available": 2,
+        "ready": 2
+    },
+    {
+        "name": "coredns",
+        "namespace": "kube-system",
+        "replicas": 1,
+        "available": 1,
+        "ready": 1
+    },
+    {
+        "name": "metrics-server",
+        "namespace": "kube-system",
+        "replicas": 1,
+        "available": 0,
+        "ready": 0
+    }
+```
+
+#### Deployment metrics
+
+`GET /api/v1/kubernetes/metrics/deployment/:name`
+
+Returns metrics for a specific deployment.
+
+**Response Example:**
+
+```json
+{
+  "available": 2,
+  "conditions": [
+    {
+      "lastTransitionTime": "2025-06-07T16:34:34Z",
+      "lastUpdateTime": "2025-06-07T18:55:17Z",
+      "message": "ReplicaSet \"nginx-test-6bff9d5d95\" has successfully progressed.",
+      "reason": "NewReplicaSetAvailable",
+      "status": "True",
+      "type": "Progressing"
+    },
+    {
+      "lastTransitionTime": "2025-06-07T20:58:08Z",
+      "lastUpdateTime": "2025-06-07T20:58:08Z",
+      "message": "Deployment does not have minimum availability.",
+      "reason": "MinimumReplicasUnavailable",
+      "status": "False",
+      "type": "Available"
+    }
+  ],
+  "creationTimestamp": "2025-06-07T16:34:34Z",
+  "name": "nginx-test",
+  "namespace": "default",
+  "observedGeneration": 1,
+  "ready": 2,
+  "replicas": 6,
+  "unavailable": 4,
+  "updated": 6
+}
 ```
 
 #### Namespace Metrics

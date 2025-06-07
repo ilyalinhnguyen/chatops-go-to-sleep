@@ -13,14 +13,7 @@ type MetricsHandler struct {
 	kubeClient *kuberclient.Client
 }
 
-func NewMetricsHandler(promURL string) *MetricsHandler {
-	// We're ignoring the promURL parameter since we're now using the Kubernetes client directly
-	client, err := kuberclient.NewClient()
-	if err != nil {
-		// Log the error but continue - the handler will return appropriate errors when methods are called
-		fmt.Printf("Failed to initialize Kubernetes client: %v\n", err)
-	}
-
+func NewMetricsHandler(client *kuberclient.Client) *MetricsHandler {
 	return &MetricsHandler{
 		kubeClient: client,
 	}
@@ -53,6 +46,14 @@ type PodMetrics struct {
 	PodIP      string `json:"podIP"`
 	StartTime  string `json:"startTime,omitempty"`
 	Containers int    `json:"containers"`
+}
+
+type DeploymentMetrics struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Replicas  int32  `json:"replicas"`
+	Available int32  `json:"available"`
+	Ready     int32  `json:"ready"`
 }
 
 func (h *MetricsHandler) GetClusterMetrics(c fiber.Ctx) error {
@@ -249,6 +250,70 @@ func (h *MetricsHandler) GetNamespaceMetrics(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(namespaceMetrics)
+}
+
+// GetDeployments returns a list of all deployments or deployments in a specific namespace
+func (h *MetricsHandler) GetDeploymentsMetrics(c fiber.Ctx) error {
+	if h.kubeClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Kubernetes client not available",
+		})
+	}
+
+	ctx := context.Background()
+	namespace := c.Query("namespace", "") // Optional namespace filter
+
+	deployments, err := h.kubeClient.ListDeployments(ctx, namespace)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to fetch deployments: %v", err),
+		})
+	}
+
+	// Convert to our response format
+	deploymentInfos := make([]DeploymentMetrics, 0, len(deployments))
+	for _, deployment := range deployments {
+		info := DeploymentMetrics{
+			Name:      deployment.Name,
+			Namespace: deployment.Namespace,
+			Replicas:  deployment.Replicas,
+			Available: deployment.AvailableReplicas,
+			Ready:     deployment.ReadyReplicas,
+		}
+		deploymentInfos = append(deploymentInfos, info)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(deploymentInfos)
+}
+
+// GetDeploymentStatus retrieves detailed status for a specific deployment
+func (h *MetricsHandler) GetDeploymentStatus(c fiber.Ctx) error {
+	if h.kubeClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Kubernetes client not available",
+		})
+	}
+
+	ctx := context.Background()
+	namespace := c.Query("namespace", "default")
+	name := c.Params("name")
+
+	if name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Deployment name is required",
+		})
+	}
+
+	status, err := h.kubeClient.GetDeploymentStatus(ctx, namespace, name)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Failed to get service status",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(status)
 }
 
 // Helper function to convert map[string]interface{} to map[string]string
