@@ -18,7 +18,8 @@
 -  [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
 
 ### ❓ How to run the service 
-- Set up the .env file in the source directiry and the config file of the Kubernetes in the following route
+- Set up the .env file in the source directory
+- Set up the Kuberentes in his config file in the following route:
 ```bash
 backend/config/kubeconfig
 ```
