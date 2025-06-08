@@ -36,7 +36,7 @@ class DeploymentData:
 
 
 def message_text() -> str:
-    return "Send the name of a specific deployment or press the button."
+    return "Send the name of a specific deployment or press the button bellow to return all deployments."
 
 
 def inline_keyboard() -> InlineKeyboardMarkup:
