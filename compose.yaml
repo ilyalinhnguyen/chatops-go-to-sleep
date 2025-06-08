@@ -4,8 +4,7 @@ services:
       context: backend/
       dockerfile: Dockerfile
     restart: always
-    ports:
-      - "8000:8000"
+    network_mode: host
     env_file:
       - .env
   tg-bot:
@@ -13,3 +12,4 @@ services:
       context: tg-bot/
     env_file:
       - .env
+    network_mode: host
