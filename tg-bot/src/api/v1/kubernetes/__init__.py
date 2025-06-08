@@ -1,3 +1,3 @@
-import metrics
+from . import metrics
 
 _ = metrics

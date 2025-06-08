@@ -2,6 +2,8 @@ from typing import Any
 
 from src.api import private
 
+from . import metrics
+
 PREFIX: str = "v1/prometheus"
 
 

@@ -6,6 +6,7 @@ import sys
 import dotenv
 from aiogram import Bot, Dispatcher
 
+from . import api
 from .routes import router
 
 
@@ -24,4 +25,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    print(api.v1.kubernetes.metrics.cluster())
+
+    # asyncio.run(main())
