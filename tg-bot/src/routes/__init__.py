@@ -11,7 +11,6 @@ from . import (
     scale,
     start,
     status,
-    update,
 )
 
 router = Router()
