@@ -64,7 +64,7 @@ class RollbackResponse(TypedDict):
     data: RollbackResponseData
 
 
-def rollback(namespace: str, name: str) -> RollbackResponse | None:
+def rollback(namespace: str, name: str) -> RollbackResponse | str:
     response = private.post(
         f"{PREFIX}/rollback",
         json={"namespace": namespace, "name": name},
@@ -72,7 +72,7 @@ def rollback(namespace: str, name: str) -> RollbackResponse | None:
     if response.ok:
         return response.json()
     else:
-        return None
+        return response.reason
 
 
 def rollback_rev_id(
