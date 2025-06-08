@@ -2,7 +2,6 @@ from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
-
 from src.fsm import UserState
 
 router = Router()
@@ -15,30 +14,12 @@ async def command_start(message: Message, state: FSMContext) -> None:
 
 async def show_menu(message: Message, state: FSMContext) -> None:
     keyboard = [
-        [
-            InlineKeyboardButton(
-                text="Show service metrics",
-                callback_data="status",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Roll back the deployment",
-                callback_data="rollback",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Change the number of replicas",
-                callback_data="scale",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Restart the service",
-                callback_data="restart",
-            ),
-        ],
+        [InlineKeyboardButton(text="Deployments", callback_data="deployments")],
+        [InlineKeyboardButton(text="Pods", callback_data="pods")],
+        [InlineKeyboardButton(text="Restart", callback_data="restart")],
+        [InlineKeyboardButton(text="Rollback", callback_data="rollback")],
+        [InlineKeyboardButton(text="Scale", callback_data="scale")],
+        [InlineKeyboardButton(text="Status", callback_data="status")],
     ]
 
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
