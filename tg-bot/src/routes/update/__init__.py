@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
@@ -14,13 +15,13 @@ router = Router()
 class UpdateData:
     namespace: str
     name: str
-    image: str  
+    image: str
 
     @staticmethod
     def parse_command(text: str) -> "UpdateData | None":
         tokens = text.split()
 
-        if len(tokens) != 3:  
+        if len(tokens) != 3:
             return None
 
         if tokens[0] != "/update":
@@ -51,10 +52,10 @@ async def command_update(message: Message) -> None:
         )
         return
 
-    response = api.v1.kubernetes.service.update(
+    response = api.v1.kubernetes.service.update_image(
         namespace=update_data.namespace,
         name=update_data.name,
-        image=update_data.image
+        image=update_data.image,
     )
     if response is None:
         await message.answer("Internal error.")
