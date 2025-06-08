@@ -7,6 +7,8 @@ from aiogram.types import Message
 from aiogram.types.callback_query import CallbackQuery
 from src import api
 from src.fsm import UserState
+from aiogram.fsm.context import FSMContext
+from src.routes import start
 
 router = Router()
 
@@ -35,13 +37,14 @@ class StatusData:
 
 
 @router.callback_query(UserState.default, F.data == "status")
-async def query_status(query: CallbackQuery) -> None:
+async def query_status(query: CallbackQuery, state: FSMContext) -> None:
     assert query.message is not None
     await query.message.answer("received a /status")
+    await state.set_state(UserState.status_prompted)
 
 
 @router.message(UserState.default, Command("status"))
-async def command_status(message: Message) -> None:
+async def command_status(message: Message, state: FSMContext) -> None:
     assert message.text is not None
 
     status_data = StatusData.parse_command(message.text)
@@ -58,3 +61,4 @@ async def command_status(message: Message) -> None:
         return
 
     await message.answer(str(response["data"]))
+    await start.command_start(message, state)

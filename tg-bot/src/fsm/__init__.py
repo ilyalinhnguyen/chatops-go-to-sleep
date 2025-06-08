@@ -11,3 +11,4 @@ class UserState(StatesGroup):
     update_confirm = State()
     restart_prompted = State()
     restart_prompted_name = State()
+    status_prompted = State()
