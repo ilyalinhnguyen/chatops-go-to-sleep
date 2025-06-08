@@ -9,3 +9,5 @@ class UserState(StatesGroup):
     rollback_prompted_version = State()
     rollback_confirm = State()
     update_confirm = State()
+    restart_prompted = State()
+    restart_prompted_name = State()

@@ -6,6 +6,8 @@ from . import metrics
 
 PREFIX: str = "v1/prometheus"
 
+_ = metrics
+
 
 def query(promql_query: str) -> dict[str, Any] | None:
     response = private.post(f"{PREFIX}/query", json={"query": promql_query})

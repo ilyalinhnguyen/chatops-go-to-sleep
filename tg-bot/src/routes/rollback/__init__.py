@@ -59,13 +59,13 @@ async def query_rollback(query: CallbackQuery, state: FSMContext) -> None:
 
 # @router.message(UserState.rollback_prompted_version)
 # async def received_version(message: Message, state: FSMContext) -> None:
-    # if message.text is None:
-        # await command_rollback_pure(message, state)
-        # return
+# if message.text is None:
+# await command_rollback_pure(message, state)
+# return
 #
-    # await state.update_data(version=message.text)
-    # await state.set_state(UserState.rollback_confirm)
-    # await confirm(message, state)
+# await state.update_data(version=message.text)
+# await state.set_state(UserState.rollback_confirm)
+# await confirm(message, state)
 
 
 @router.message(UserState.default, Command("rollback"))
@@ -124,8 +124,8 @@ async def confirm(message: Message, state: FSMContext) -> None:
 @router.callback_query(UserState.rollback_confirm, F.data == "rollback-yes")
 async def roll_back(query: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
-    namespace: str|None = data.get("namespace")
-    name: str|None = data.get("name")
+    namespace: str | None = data.get("namespace")
+    name: str | None = data.get("name")
 
     if query.message is None:
         return
@@ -136,7 +136,7 @@ async def roll_back(query: CallbackQuery, state: FSMContext) -> None:
         return
 
     await query.message.answer("Rolling back, please wait...")
-   
+
     if namespace is None or name is None:
         return
 
