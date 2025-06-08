@@ -86,15 +86,8 @@ func (h *Handler) InitRoutes(cfg fiber.Config) {
 	// Unsecure ping
 	api.Get("/ping", h.ping)
 
-	// Public metrics endpoint
-	api.Get("/metrics", h.metricsHandler)
-
 	v1 := api.Group("/v1")
 	v1.Use(h.authMiddleware.Authenticate)
-
-	v1.Post("/scale", h.scaleHandler)
-	v1.Post("/restart", h.restartHandler)
-	v1.Post("/rollback", h.rollbackHandler)
 
 	// Kubernetes metrics endpoints
 	kubernetes := v1.Group("/kubernetes")
