@@ -12,18 +12,18 @@ router = Router()
 
 
 @dataclass(kw_only=True)
-class StatusData:
+class RestartData:
     namespace: str
     name: str
 
     @staticmethod
-    def parse_command(text: str) -> "StatusData | None":
+    def parse_command(text: str) -> "RestartData | None":
         tokens = text.split()
 
         if len(tokens) != 2:
             return None
 
-        if tokens[0] != "/status":
+        if tokens[0] != "/restart":
             return None
 
         args = tokens[1].split(":")
@@ -31,28 +31,28 @@ class StatusData:
         if len(args) != 2:
             return None
 
-        return StatusData(namespace=args[0], name=args[1])
+        return RestartData(namespace=args[0], name=args[1])
 
 
-@router.callback_query(UserState.default, F.data == "status")
-async def query_status(query: CallbackQuery) -> None:
+@router.callback_query(UserState.default, F.data == "restart")
+async def query_restart(query: CallbackQuery) -> None:
     assert query.message is not None
-    await query.message.answer("received a /status")
+    await query.message.answer("received a /restart")
 
 
-@router.message(UserState.default, Command("status"))
-async def command_status(message: Message) -> None:
+@router.message(UserState.default, Command("restart"))
+async def command_restart(message: Message) -> None:
     assert message.text is not None
 
-    status_data = StatusData.parse_command(message.text)
-    if status_data is None:
+    restart_data = RestartData.parse_command(message.text)
+    if restart_data is None:
         await message.answer(
-            "`/status <NAMESPACE>:<NAME>`",
+            "`/restart <NAMESPACE>:<NAME>`",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
         return
 
-    response = api.v1.kubernetes.service.status(status_data.namespace, status_data.name)
+    response = api.v1.kubernetes.service.restart(restart_data.namespace, restart_data.name)
     if response is None:
         await message.answer("Internal error.")
         return

@@ -22,14 +22,7 @@ All endpoints except `/api/ping` and `/api/metrics` require authentication with 
 ### Basic Endpoints
 
 - `GET /api/ping` - Health check endpoint (no authentication required)
-- `GET /api/metrics` - Prometheus metrics endpoint (no authentication required)
 - `GET /api/v1/ping` - Authenticated health check endpoint
-
-### Operations Endpoints
-
-- `POST /api/v1/scale` - Scale application resources
-- `POST /api/v1/restart` - Restart application services
-- `POST /api/v1/rollback` - Rollback to previous version
 
 ### Kubernetes Service Operations
 
