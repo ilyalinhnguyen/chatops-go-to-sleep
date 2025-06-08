@@ -58,6 +58,52 @@ def pods(namespace: str | None) -> list[Pod] | None:
         return None
 
 
+class Deployment(TypedDict):
+    name: str
+    namespace: str
+    replicas: int
+    available: int
+    ready: int
+
+
+def deployment() -> list[Deployment] | None:
+    response = private.get(f"{PREFIX}/deployment")
+    if response.ok:
+        return response.json()
+    else:
+        return None
+
+
+class DeploymentConditions(TypedDict):
+    lastTransitionTime: str
+    lastUpdatedTime: str
+    message: str
+    reason: str
+    status: str
+    type: str
+
+
+class SpecificDeployment(TypedDict):
+    available: int
+    conditions: list[DeploymentConditions]
+    creationTimestamp: str
+    name: str
+    namespace: str
+    observedGeneration: int
+    ready: int
+    replicas: int
+    unavailable: int
+    updated: int
+
+
+def deployment_name(name: str) -> SpecificDeployment | None:
+    response = private.get(f"{PREFIX}/deployment/{name}")
+    if response.ok:
+        return response.json()
+    else:
+        return None
+
+
 class Namespace(TypedDict):
     name: str
     cpuUsage: float
