@@ -13,6 +13,11 @@ async def command_start(message: Message, state: FSMContext) -> None:
     await show_menu(message, state)
 
 
+@router.message(CommandUpdate())
+async def command_update(message: Message, state: FSMContext) -> None:
+    await show_menu(message, state)
+
+
 async def show_menu(message: Message, state: FSMContext) -> None:
     keyboard = [
         [
