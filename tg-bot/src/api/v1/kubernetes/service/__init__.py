@@ -41,7 +41,7 @@ class RestartResponse(TypedDict):
 
 def restart(namespace: str, name: str) -> RestartResponse | None:
     response = private.post(
-        f"{PREFIX}/scale",
+        f"{PREFIX}/restart",
         json={"namespace": namespace, "name": name},
     )
     if response.ok:
