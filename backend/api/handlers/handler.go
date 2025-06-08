@@ -38,7 +38,7 @@ func (h *Handler) Run() error {
 
 func NewHandler(log *slog.Logger, auth *middleware.AuthenticationMiddleware) *Handler {
 	cfg := config.NewConfig()
-	promClient := prometheusclient.NewClient()
+	promClient := prometheusclient.NewClient(cfg.PrometheusURL)
 
 	// Initialize Kubernetes client once
 	kubeClient, err := kuberclient.NewClient()
@@ -121,6 +121,12 @@ func (h *Handler) InitRoutes(cfg fiber.Config) {
 	prometheusGroup.Get("/metrics/list", h.promMetrics.MetricsList)
 	prometheusGroup.Get("/metrics/:name", h.promMetrics.QueryMetric)
 	prometheusGroup.Post("/query", h.promMetrics.CustomQuery)
+
+	prometheusAlerts := prometheusGroup.Group("/alerts")
+	prometheusAlerts.Get("/list", h.promMetrics.GetAlerts)
+	prometheusAlerts.Get("/rules", h.promMetrics.GetAlertRules)
+	prometheusAlerts.Get("/query", h.promMetrics.QueryAlerts)
+	prometheusAlerts.Get("/active", h.promMetrics.GetActiveAlerts)
 
 	// Secure ping
 	v1.Get("/ping", h.ping)

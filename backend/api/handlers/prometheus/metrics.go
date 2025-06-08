@@ -31,6 +31,18 @@ type BasicMetrics struct {
 	Timestamp   string  `json:"timestamp"`
 }
 
+type AlertInfo struct {
+	Name        string            `json:"name"`
+	Severity    string            `json:"severity"`
+	State       string            `json:"state"`
+	Summary     string            `json:"summary"`
+	Description string            `json:"description"`
+	ActiveSince *time.Time        `json:"activeSince,omitempty"`
+	Labels      map[string]string `json:"labels"`
+	Value       string            `json:"value,omitempty"`
+}
+
+
 func (h *MetricsHandler) GetBasicMetrics(c fiber.Ctx) error {
 	op := "GetBasicMetrics" + uuid.NewString()
 	log := h.log.With(slog.String("op", op))
@@ -196,4 +208,140 @@ func (h *MetricsHandler) CustomQuery(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+func (h *MetricsHandler) GetAlerts(c fiber.Ctx) error {
+	if h.promClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Prometheus client not available",
+		})
+	}
+
+	ctx := context.Background()
+	alerts, err := h.promClient.GetAlerts(ctx)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to fetch alerts: %v", err),
+		})
+	}
+
+	// Convert to our response format
+	alertInfos := make([]AlertInfo, 0, len(alerts))
+	for _, alert := range alerts {
+		info := AlertInfo{
+			Name:     alert.Labels["alertname"],
+			Severity: alert.Labels["severity"],
+			State:    alert.State,
+			Labels:   alert.Labels,
+			Value:    alert.Value,
+		}
+
+		// Extract summary and description from annotations
+		if summary, ok := alert.Annotations["summary"]; ok {
+			info.Summary = summary
+		}
+		if description, ok := alert.Annotations["description"]; ok {
+			info.Description = description
+		}
+
+		// Add active time if available
+		if !alert.ActiveAt.IsZero() {
+			info.ActiveSince = &alert.ActiveAt
+		}
+
+		alertInfos = append(alertInfos, info)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(alertInfos)
+}
+
+// GetAlertRules returns all alert rules from Prometheus
+func (h *MetricsHandler) GetAlertRules(c fiber.Ctx) error {
+	if h.promClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Prometheus client not available",
+		})
+	}
+
+	ctx := context.Background()
+	rules, err := h.promClient.QueryRules(ctx)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to fetch alert rules: %v", err),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(rules)
+}
+
+// QueryAlerts allows custom PromQL queries for alerts
+func (h *MetricsHandler) QueryAlerts(c fiber.Ctx) error {
+	if h.promClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Prometheus client not available",
+		})
+	}
+
+	query := c.Query("query")
+	if query == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Query parameter is required",
+		})
+	}
+
+	ctx := context.Background()
+	result, err := h.promClient.QueryAlerts(ctx, query)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to execute query: %v", err),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+// GetActiveAlerts returns only the currently firing alerts from Prometheus
+func (h *MetricsHandler) GetActiveAlerts(c fiber.Ctx) error {
+	if h.promClient == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "Prometheus client not available",
+		})
+	}
+
+	ctx := context.Background()
+	alerts, err := h.promClient.GetActiveAlerts(ctx)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to fetch active alerts: %v", err),
+		})
+	}
+
+	// Convert to our response format
+	alertInfos := make([]AlertInfo, 0, len(alerts))
+	for _, alert := range alerts {
+		info := AlertInfo{
+			Name:     alert.Labels["alertname"],
+			Severity: alert.Labels["severity"],
+			State:    alert.State,
+			Labels:   alert.Labels,
+			Value:    alert.Value,
+		}
+
+		// Extract summary and description from annotations
+		if summary, ok := alert.Annotations["summary"]; ok {
+			info.Summary = summary
+		}
+		if description, ok := alert.Annotations["description"]; ok {
+			info.Description = description
+		}
+
+		// Add active time if available
+		if !alert.ActiveAt.IsZero() {
+			info.ActiveSince = &alert.ActiveAt
+		}
+
+		alertInfos = append(alertInfos, info)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(alertInfos)
 }

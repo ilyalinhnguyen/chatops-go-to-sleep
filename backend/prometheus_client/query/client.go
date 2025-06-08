@@ -151,3 +151,130 @@ func FormatValue(value []interface{}) (float64, time.Time, error) {
 
 	return v, time.Unix(int64(timestamp), 0), nil
 }
+
+// Alert represents a Prometheus alert
+type Alert struct {
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
+	State       string            `json:"state"`
+	ActiveAt    time.Time         `json:"activeAt"`
+	Value       string            `json:"value"`
+}
+
+// AlertsResponse represents the response from the Prometheus alerts API
+type AlertsResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		Alerts []Alert `json:"alerts"`
+	} `json:"data"`
+}
+
+// RulesResponse represents the response from the Prometheus rules API
+type RulesResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		Groups []RuleGroup `json:"groups"`
+	} `json:"data"`
+}
+
+// RuleGroup represents a group of Prometheus rules
+type RuleGroup struct {
+	Name  string `json:"name"`
+	Rules []Rule `json:"rules"`
+}
+
+// Rule represents a Prometheus rule
+type Rule struct {
+	Name        string            `json:"name"`
+	Query       string            `json:"query"`
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
+	State       string            `json:"state"`
+	Type        string            `json:"type"`
+}
+
+// GetAlerts retrieves all alerts from Prometheus
+func (c *PrometheusClient) GetAlerts(ctx context.Context) ([]Alert, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/api/v1/alerts", c.baseURL))
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var result AlertsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result.Data.Alerts, nil
+}
+
+// QueryRules retrieves all alert rules from Prometheus
+func (c *PrometheusClient) QueryRules(ctx context.Context) (*RulesResponse, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/api/v1/rules", c.baseURL))
+	if err != nil {
+		return nil, err
+	}
+
+	q := u.Query()
+	q.Set("type", "alert")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var result RulesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+// QueryAlerts executes a custom query for alerts
+func (c *PrometheusClient) QueryAlerts(ctx context.Context, query string) (*QueryResult, error) {
+	return c.Query(ctx, query, time.Now())
+}
+
+// GetActiveAlerts retrieves only the currently firing alerts
+func (c *PrometheusClient) GetActiveAlerts(ctx context.Context) ([]Alert, error) {
+	alerts, err := c.GetAlerts(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var activeAlerts []Alert
+	for _, alert := range alerts {
+		if alert.State == "firing" {
+			activeAlerts = append(activeAlerts, alert)
+		}
+	}
+
+	return activeAlerts, nil
+}

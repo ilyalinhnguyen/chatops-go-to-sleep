@@ -12,6 +12,12 @@ FROM alpine:3.22
 WORKDIR /app
 COPY --from=build /app/chatops .
 COPY --from=build /app/config ./config
+
+COPY --from=build /app/config/kubeconfig /root/.kube/config
+
+RUN chmod 600 /root/.kube/config
+ENV KUBECONFIG=/root/.kube/config
+
 COPY .env .
 EXPOSE 8000
 CMD ["./chatops"]
