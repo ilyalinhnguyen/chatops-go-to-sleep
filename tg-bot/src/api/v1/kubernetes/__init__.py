@@ -1,3 +1,4 @@
-from . import metrics
+from . import metrics, service
 
 _ = metrics
+_ = service
