@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/retry"
 )
+
 //TODO: add retry counter to user
 
 // Client provides methods to interact with a Kubernetes cluster
@@ -457,13 +458,13 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace string) ([]map[str
 
 // DeploymentInfo holds basic deployment information
 type DeploymentInfo struct {
-	Name               string
-	Namespace          string
-	Replicas           int32
-	AvailableReplicas  int32
-	ReadyReplicas      int32
-	UpdatedReplicas    int32
-	CreationTimestamp  metav1.Time
+	Name              string
+	Namespace         string
+	Replicas          int32
+	AvailableReplicas int32
+	ReadyReplicas     int32
+	UpdatedReplicas   int32
+	CreationTimestamp metav1.Time
 }
 
 // ListDeployments retrieves all deployments or deployments in a specific namespace
