@@ -1,5 +1,7 @@
 from typing import TypedDict
 
+from pydantic.types import Strict
+
 from src.api import private
 
 PREFIX: str = "v1/kubernetes/metrics"

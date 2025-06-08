@@ -3,8 +3,7 @@ from dataclasses import dataclass
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
-from aiogram.types import Message
-from aiogram.types.callback_query import CallbackQuery
+from aiogram.types import Message, CallbackQuery
 from src import api
 from src.fsm import UserState
 from aiogram.fsm.context import FSMContext
