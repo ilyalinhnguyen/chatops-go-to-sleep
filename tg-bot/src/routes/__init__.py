@@ -1,6 +1,13 @@
 from aiogram import Router
 
-from . import rollback, scale, start, status, restart
+from . import metrics, restart, rollback, scale, start, status
 
 router = Router()
-router.include_routers(rollback.router, scale.router, start.router, status.router, restart.router)
+router.include_routers(
+    start.router,
+    metrics.router,
+    restart.router,
+    rollback.router,
+    scale.router,
+    status.router,
+)
