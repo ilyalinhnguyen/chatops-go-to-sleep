@@ -8,3 +8,4 @@ class UserState(StatesGroup):
     scale_confirm = State()
     rollback_prompted_version = State()
     rollback_confirm = State()
+    update_confirm = State()
