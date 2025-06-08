@@ -87,7 +87,7 @@ func (h *Handler) InitRoutes(cfg fiber.Config) {
 	api.Get("/ping", h.ping)
 
 	v1 := api.Group("/v1")
-	v1.Use(h.authMiddleware.Authenticate)
+	// v1.Use(h.authMiddleware.Authenticate)
 
 	// Kubernetes metrics endpoints
 	kubernetes := v1.Group("/kubernetes")
