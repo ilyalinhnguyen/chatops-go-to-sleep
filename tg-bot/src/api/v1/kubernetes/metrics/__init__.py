@@ -66,8 +66,8 @@ class Deployment(TypedDict):
     ready: int
 
 
-def deployment() -> list[Deployment] | None:
-    response = private.get(f"{PREFIX}/deployment")
+def deployments() -> list[Deployment] | None:
+    response = private.get(f"{PREFIX}/deployments")
     if response.ok:
         return response.json()
     else:
@@ -96,8 +96,8 @@ class SpecificDeployment(TypedDict):
     updated: int
 
 
-def deployment_name(name: str) -> SpecificDeployment | None:
-    response = private.get(f"{PREFIX}/deployment/{name}")
+def deployments_by_name(name: str) -> SpecificDeployment | None:
+    response = private.get(f"{PREFIX}/deployments/{name}")
     if response.ok:
         return response.json()
     else:
