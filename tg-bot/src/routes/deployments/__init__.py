@@ -42,7 +42,16 @@ def message_text() -> str:
 def inline_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Return all", callback_data="deployments-all")]
+            [
+                InlineKeyboardButton(
+                    text="Return all",
+                    callback_data="deployments-all",
+                ),
+                InlineKeyboardButton(
+                    text="Cancel",
+                    callback_data="deployments-cancel",
+                ),
+            ],
         ],
     )
 
@@ -74,6 +83,11 @@ async def callback_deployments_all(query: CallbackQuery, state: FSMContext) -> N
         f"```json\n{json.dumps(response, indent=2)[:4000]}```",
         parse_mode=ParseMode.MARKDOWN_V2,
     )
+    await start.command_start(query.message, state)
+
+
+@router.callback_query(UserState.deployments, F.data == "deployments-cancel")
+async def callback_deployments_cancel(query: CallbackQuery, state: FSMContext) -> None:
     await start.command_start(query.message, state)
 
 
