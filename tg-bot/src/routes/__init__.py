@@ -1,6 +1,7 @@
 from aiogram import Router
 
 from . import (
+    deployments,
     metrics,
     namespaces,
     nodes,
@@ -16,6 +17,7 @@ from . import (
 router = Router()
 router.include_routers(
     start.router,
+    deployments.router,
     metrics.router,
     namespaces.router,
     nodes.router,
