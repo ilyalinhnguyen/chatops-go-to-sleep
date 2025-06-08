@@ -39,6 +39,12 @@ async def show_menu(message: Message, state: FSMContext) -> None:
                 callback_data="restart",
             ),
         ],
+        [
+            InlineKeyboardButton(
+                text="Update the service",
+                callback_data="update",
+            ),
+        ],
     ]
 
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)

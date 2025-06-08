@@ -10,4 +10,5 @@ router.include_routers(
     rollback.router,
     scale.router,
     status.router,
+    update.router,
 )
