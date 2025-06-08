@@ -18,6 +18,6 @@ COPY --from=build /app/config/kubeconfig /root/.kube/config
 RUN chmod 600 /root/.kube/config
 ENV KUBECONFIG=/root/.kube/config
 
-COPY .env .
+# COPY .env .
 EXPOSE 8000
 CMD ["./chatops"]
