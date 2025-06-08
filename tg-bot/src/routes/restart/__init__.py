@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+
 from src import api
 from src.fsm import UserState
 from src.routes import start
@@ -38,8 +39,8 @@ class RestartData:
 @router.callback_query(UserState.default, F.data == "restart")
 async def query_restart(query: CallbackQuery, state: FSMContext) -> None:
     assert query.message is not None
-    await state.set_state(UserState.restart_prompted)
-    await query.message.answer("received a /restart")
+    await query.message.answer("Use /restart")
+    await start.command_start(query.message, state)
 
 
 @router.message(UserState.default, Command("restart"))

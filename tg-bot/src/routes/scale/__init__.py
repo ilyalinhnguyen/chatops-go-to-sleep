@@ -1,11 +1,13 @@
 from dataclasses import dataclass
+
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+
 from src import api
 from src.fsm import UserState
-from aiogram.fsm.context import FSMContext
 from src.routes import start
 
 router = Router()
@@ -50,8 +52,8 @@ def prompt_service_message() -> str:
 @router.callback_query(UserState.default, F.data == "scale")
 async def query_scale(query: CallbackQuery, state: FSMContext) -> None:
     assert query.message is not None
-    await state.set_state(UserState.scale_prompted_service)
-    await query.message.answer("received a /scale")
+    await query.message.answer("Use /scale")
+    await start.command_start(query.message, state)
 
 
 @router.message(UserState.default, Command("scale"))
