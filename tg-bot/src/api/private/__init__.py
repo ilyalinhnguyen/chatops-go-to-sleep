@@ -6,15 +6,17 @@ from requests import Response
 
 def init_api_url() -> str:
     api = os.getenv("SERVER_URL")
-    assert api is not None
+    if api is None:
+        raise RuntimeError("SERVER_URL is not set")
     return api
 
 
 def init_headers() -> dict[str, str]:
     auth_key = os.getenv("AUTH_KEY")
-    assert auth_key is not None
+    if auth_key is None:
+        raise RuntimeError("AUTH_KEY is not set")
 
-    return {"Authentication": auth_key}
+    return {"Authorization": f"Bearer {auth_key}"}
 
 
 API: str = init_api_url()

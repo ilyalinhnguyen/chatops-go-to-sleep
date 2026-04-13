@@ -83,7 +83,7 @@ You can roll back to a specific version by providing just the version tag:
 ```bash
 curl -X POST \
   http://your-api-host:8000/api/v1/kubernetes/service/rollback \
-  -H 'Authentication: your-api-token' \
+  -H 'Authorization: Bearer your-api-token' \
   -H 'Content-Type: application/json' \
   -d '{
     "namespace": "production",
@@ -96,7 +96,7 @@ curl -X POST \
 ```bash
 curl -X POST \
   http://your-api-host:8000/api/v1/kubernetes/service/rollback \
-  -H 'Authentication: your-api-token' \
+  -H 'Authorization: Bearer your-api-token' \
   -H 'Content-Type: application/json' \
   -d '{
     "namespace": "production",
@@ -110,7 +110,7 @@ curl -X POST \
 ```bash
 curl -X POST \
   http://your-api-host:8000/api/v1/kubernetes/service/rollback \
-  -H 'Authentication: your-api-token' \
+  -H 'Authorization: Bearer your-api-token' \
   -H 'Content-Type: application/json' \
   -d '{
     "namespace": "production",
@@ -124,7 +124,7 @@ curl -X POST \
 ```bash
 curl -X POST \
   http://your-api-host:8000/api/v1/kubernetes/service/rollback \
-  -H 'Authentication: your-api-token' \
+  -H 'Authorization: Bearer your-api-token' \
   -H 'Content-Type: application/json' \
   -d '{
     "namespace": "production",

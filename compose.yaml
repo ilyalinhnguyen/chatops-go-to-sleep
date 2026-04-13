@@ -4,12 +4,15 @@ services:
       context: backend/
       dockerfile: Dockerfile
     restart: always
-    network_mode: host
     env_file:
       - .env
+    ports:
+      - "8000:8000"
   tg-bot:
     build:
       context: tg-bot/
+    restart: always
     env_file:
       - .env
-    network_mode: host
+    environment:
+      SERVER_URL: http://backend:8000/api

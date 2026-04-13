@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -137,9 +140,19 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 		config.Namespace = "default"
 	}
 
+	deployment, err := c.clientset.AppsV1().Deployments(config.Namespace).Get(ctx, config.Name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get deployment %s in namespace %s: %v", config.Name, config.Namespace, err)
+	}
+
+	selector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
+	if err != nil {
+		return fmt.Errorf("failed to build label selector for deployment %s: %v", config.Name, err)
+	}
+
 	// Get the deployment's ReplicaSets (revision history)
 	deploymentHistory, err := c.clientset.AppsV1().ReplicaSets(config.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("app=%s", config.Name),
+		LabelSelector: selector.String(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get deployment history: %v", err)
@@ -148,6 +161,10 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 	if len(deploymentHistory.Items) == 0 {
 		return fmt.Errorf("no revisions found for deployment %s", config.Name)
 	}
+
+	sort.SliceStable(deploymentHistory.Items, func(i, j int) bool {
+		return revisionNumber(deploymentHistory.Items[i]) > revisionNumber(deploymentHistory.Items[j])
+	})
 
 	// Find the target revision to roll back to
 	var targetRevision *appsv1.ReplicaSet
@@ -169,12 +186,9 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 	} else if config.RevisionImage != "" || config.Version != "" {
 		targetImage := config.RevisionImage
 		if targetImage == "" && config.Version != "" {
-			// If only version is specified, need to construct the full image name
-			// This would require knowing the image name format
-			// For simplicity, we'll search for any image ending with the specified version
 			for i := range deploymentHistory.Items {
 				for _, container := range deploymentHistory.Items[i].Spec.Template.Spec.Containers {
-					if container.Image == config.Version || filepath.Ext(container.Image) == "."+config.Version {
+					if imageHasVersion(container.Image, config.Version) {
 						targetRevision = &deploymentHistory.Items[i]
 						break
 					}
@@ -198,19 +212,14 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 			}
 		}
 		if targetRevision == nil {
-			return fmt.Errorf("no revision found with image %s for deployment %s",
-				config.RevisionImage != "")
+			if config.RevisionImage != "" {
+				return fmt.Errorf("no revision found with image %s for deployment %s", config.RevisionImage, config.Name)
+			}
+			return fmt.Errorf("no revision found with version %s for deployment %s", config.Version, config.Name)
 		}
 		// Case 3: Default to previous revision
 	} else if len(deploymentHistory.Items) > 1 {
-		// Sort revisions by creation timestamp (newest first)
-		// For simplicity, we're just getting the previous revision
-		for i := range deploymentHistory.Items {
-			if i == 1 { // Second newest (current is index 0)
-				targetRevision = &deploymentHistory.Items[i]
-				break
-			}
-		}
+		targetRevision = &deploymentHistory.Items[1]
 	} else {
 		return fmt.Errorf("only one revision found, cannot rollback deployment %s", config.Name)
 	}
@@ -220,7 +229,6 @@ func (c *Client) RollbackDeployment(ctx context.Context, config ServiceConfig) e
 	}
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Get the deployment
 		deployment, err := c.clientset.AppsV1().Deployments(config.Namespace).Get(ctx, config.Name, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to get deployment %s in namespace %s: %v", config.Name, config.Namespace, err)
@@ -266,11 +274,8 @@ func (c *Client) UpdateDeployment(ctx context.Context, config ServiceConfig) err
 			if config.Image != "" {
 				deployment.Spec.Template.Spec.Containers[i].Image = config.Image
 			} else if config.Version != "" {
-				// Extract the image name and repository, update the tag
 				image := deployment.Spec.Template.Spec.Containers[i].Image
-				// Simple image tag replacement - assumes format like "image:tag"
-				// For more complex image references, you might need a more sophisticated parser
-				deployment.Spec.Template.Spec.Containers[i].Image = fmt.Sprintf("%s:%s", image[:len(image)-len(filepath.Ext(image))], config.Version)
+				deployment.Spec.Template.Spec.Containers[i].Image = withImageTag(image, config.Version)
 			}
 		}
 
@@ -278,6 +283,41 @@ func (c *Client) UpdateDeployment(ctx context.Context, config ServiceConfig) err
 		_, err = c.clientset.AppsV1().Deployments(config.Namespace).Update(ctx, deployment, metav1.UpdateOptions{})
 		return err
 	})
+}
+
+func revisionNumber(rs appsv1.ReplicaSet) int64 {
+	revisionStr := rs.Annotations["deployment.kubernetes.io/revision"]
+	revision, err := strconv.ParseInt(revisionStr, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return revision
+}
+
+func imageHasVersion(image, version string) bool {
+	tag := imageTag(image)
+	return tag == version
+}
+
+func imageTag(image string) string {
+	imageWithoutDigest := strings.SplitN(image, "@", 2)[0]
+	lastSlash := strings.LastIndex(imageWithoutDigest, "/")
+	lastColon := strings.LastIndex(imageWithoutDigest, ":")
+	if lastColon > lastSlash {
+		return imageWithoutDigest[lastColon+1:]
+	}
+	return ""
+}
+
+func withImageTag(image, version string) string {
+	imageWithoutDigest := strings.SplitN(image, "@", 2)[0]
+	lastSlash := strings.LastIndex(imageWithoutDigest, "/")
+	lastColon := strings.LastIndex(imageWithoutDigest, ":")
+	base := imageWithoutDigest
+	if lastColon > lastSlash {
+		base = imageWithoutDigest[:lastColon]
+	}
+	return fmt.Sprintf("%s:%s", base, version)
 }
 
 // GetDeploymentStatus gets the status of a deployment

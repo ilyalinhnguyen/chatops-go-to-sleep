@@ -20,7 +20,6 @@ func GetValidKeys() (map[string]bool, error) {
 
 	// Read the file
 	data, err := os.ReadFile(keysPath)
-	data, err = os.ReadFile(keysPath)
 	if err != nil {
 		return nil, err
 	}

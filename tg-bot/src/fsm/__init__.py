@@ -7,6 +7,8 @@ class UserState(StatesGroup):
     scale_prompted_service = State()
     scale_prompted_n = State()
     scale_confirm = State()
+    restart_pick_deployment = State()
+    rollback_pick_deployment = State()
     rollback_prompted_version = State()
     rollback_confirm = State()
     update_confirm = State()

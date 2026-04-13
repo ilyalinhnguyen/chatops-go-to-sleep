@@ -23,6 +23,7 @@
 ```bash
 backend/config/kubeconfig
 ```
-- Clone the repositry and navigate to it, then run the docker compose
+- Clone the repository and navigate to it, then run docker compose
 ```bash
 docker compose up -d
+```

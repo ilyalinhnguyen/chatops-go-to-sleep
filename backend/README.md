@@ -10,14 +10,14 @@ docker-compose up
 
 ## How to use API
 
-API uses token authentication, so...
-To send request use header "Authentication" with token given to u from developers)
+API uses token authentication.
+Send requests with `Authorization: Bearer <token>`.
 
 ## Available Endpoints
 
 ### Authentication
 
-All endpoints except `/api/ping` and `/api/metrics` require authentication with a valid API token in the "Authentication" header.
+All endpoints except `/api/ping` require authentication with a valid API token in the `Authorization` header.
 
 ### Basic Endpoints
 

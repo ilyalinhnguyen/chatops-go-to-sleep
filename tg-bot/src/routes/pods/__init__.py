@@ -1,14 +1,34 @@
 import json
 from dataclasses import dataclass
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 from src import api
 from src.fsm import UserState
+from src.routes import start
 
 router = Router()
+
+
+@router.callback_query(UserState.default, F.data == "pods")
+async def callback_pods(query: CallbackQuery, state: FSMContext) -> None:
+    if query.message is None:
+        return
+
+    response = api.v1.kubernetes.metrics.pods(None)
+    if response is None:
+        await query.message.answer("Internal error.")
+        await start.command_start(query.message, state)
+        return
+
+    await query.message.answer(
+        f"```json\n{json.dumps(response, indent=2)[:4000]}```",
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+    await start.command_start(query.message, state)
 
 
 @dataclass(kw_only=True)
