@@ -10,9 +10,8 @@ import (
 )
 
 type Config struct {
-	ValidAPIKeys  map[string]bool
-	DebugLevel    string
-	PrometheusURL string
+	ValidAPIKeys map[string]bool
+	DebugLevel   string
 }
 
 func NewConfig() *Config {
@@ -30,15 +29,9 @@ func NewConfig() *Config {
 		debugLevel = slogpretty.EnvProd
 	}
 
-	prometheusURL := os.Getenv("PROMETHEUS_URL")
-	if prometheusURL == "" {
-		prometheusURL = "http://localhost:9090"
-	}
-
 	return &Config{
-		ValidAPIKeys:  keys,
-		DebugLevel:    debugLevel,
-		PrometheusURL: prometheusURL,
+		ValidAPIKeys: keys,
+		DebugLevel:   debugLevel,
 	}
 }
 

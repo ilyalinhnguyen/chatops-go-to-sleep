@@ -1,9 +1,8 @@
 from src.api import private
 
-from . import kubernetes, prometheus
+from . import kubernetes
 
 _ = kubernetes
-_ = prometheus
 
 PREFIX: str = "v1"
 

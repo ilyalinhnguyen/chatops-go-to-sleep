@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/handlers"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/middleware"
@@ -12,11 +10,6 @@ import (
 
 func main() {
 	cfg := config.NewConfig()
-
-	fmt.Println("***")
-	fmt.Println("PROM URL:")
-	fmt.Println(cfg.PrometheusURL)
-	fmt.Println("***")
 
 	logger := slogpretty.SetupLogger(cfg.DebugLevel)
 

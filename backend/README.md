@@ -230,108 +230,9 @@ Gets the current status of a Kubernetes deployment.
 }
 ```
 
-### Prometheus Metrics Endpoints
-
-The following endpoints allow you to retrieve metrics directly from Prometheus:
-
-#### Basic Metrics
-
-`GET /api/v1/prometheus/metrics/basic`
-
-Returns basic metrics about your Prometheus-monitored services.
-
-**Response Example:**
-
-```json
-{
-  "upStatus": true,
-  "cpuUsage": 0.00044443456812070885,
-  "memoryUsage": 84594688,
-  "timestamp": "2023-10-25T14:30:45Z"
-}
-```
-
-#### List Available Metrics
-
-`GET /api/v1/prometheus/metrics/list`
-
-Returns a list of all available metric names from your Prometheus server.
-
-**Response Example:**
-
-```json
-{
-  "metrics": [
-    "up",
-    "process_cpu_seconds_total",
-    "process_resident_memory_bytes",
-    "prometheus_http_requests_total",
-    "go_goroutines"
-  ]
-}
-```
-
-#### Query Specific Metric
-
-`GET /api/v1/prometheus/metrics/:name`
-
-Returns the current value for a specific metric by name.
-
-**Response Example:**
-
-```json
-{
-  "resultType": "vector",
-  "result": [
-    {
-      "metric": {
-        "__name__": "up",
-        "instance": "localhost:9090",
-        "job": "prometheus"
-      },
-      "value": [1749298784.856, "1"]
-    }
-  ]
-}
-```
-
-#### Custom PromQL Query
-
-`POST /api/v1/prometheus/query`
-
-Execute a custom PromQL query against your Prometheus server.
-
-**Request Body:**
-
-```json
-{
-  "query": "rate(process_cpu_seconds_total[5m])"
-}
-```
-
-**Response Example:**
-
-```json
-{
-  "status": "success",
-  "data": {
-    "resultType": "vector",
-    "result": [
-      {
-        "metric": {
-          "instance": "localhost:9090",
-          "job": "prometheus"
-        },
-        "value": [1749298784.859, "0.00044443456812070885"]
-      }
-    ]
-  }
-}
-```
-
 ### Kubernetes Metrics Endpoints
 
-The following endpoints allow you to retrieve metrics from Prometheus about your Kubernetes cluster (requires Kubernetes metrics in Prometheus):
+The following endpoints allow you to retrieve metrics about your Kubernetes cluster:
 
 #### Cluster Metrics
 
@@ -516,17 +417,6 @@ Returns aggregated metrics for all namespaces.
 The application reads configuration from environment variables:
 
 - `DEBUG_LEVEL` - Log level (default: "prod")
-- `PROMETHEUS_URL` - URL of the Prometheus server (default: "http://localhost:9090")
 - `KUBECONFIG` - Path to Kubernetes configuration file (optional, will use in-cluster config if running in Kubernetes)
 
 API keys are stored in `config/keys.json`.
-
-## Using Prometheus Metrics
-
-For proper functioning of the Kubernetes metrics endpoints, your Prometheus server must be configured to scrape Kubernetes metrics. This typically requires:
-
-1. Installing kube-state-metrics in your Kubernetes cluster
-2. Configuring Prometheus to scrape node-exporter for node metrics
-3. Configuring Prometheus to scrape cadvisor for container metrics
-
-If your Prometheus server doesn't have Kubernetes metrics, you can still use the `/api/v1/prometheus/*` endpoints to access available metrics.

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -12,9 +12,15 @@ from aiogram.types import (
 )
 
 from src.fsm import UserState
+from src.i18n import get_effective_language, tr
 from src.routes import start
 from src import api
+from src.routes.actions_password import (
+    prompt_actions_password,
+    requires_actions_password,
+)
 from src.routes.status_view import format_deployment_status
+from src.validation import is_valid_k8s_dns_label
 
 router = Router()
 
@@ -38,59 +44,157 @@ class RollbackData:
         if len(args) != 2:
             return None
 
+        if not is_valid_k8s_dns_label(args[0]) or not is_valid_k8s_dns_label(args[1]):
+            return None
+
         return RollbackData(namespace=args[0], name=args[1])
 
 
-def prompt_version_message() -> str:
-    return "What version should we roll back the deployment to?"
-
-
-def deployments_keyboard(
+async def deployments_keyboard(
     deployments: list[dict[str, str]],
+    state: FSMContext,
     prefix: str,
     cancel_data: str,
 ) -> InlineKeyboardMarkup:
-    rows = [
-        [
-            InlineKeyboardButton(
-                text=f"{dep['namespace']}/{dep['name']}",
-                callback_data=f"{prefix}{idx}",
-            )
-        ]
-        for idx, dep in enumerate(deployments[:20])
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text=await tr(state, "cancel"), callback_data=cancel_data)],
     ]
-    rows.append([InlineKeyboardButton(text="Cancel", callback_data=cancel_data)])
+    rows.extend(
+        [
+            [
+                InlineKeyboardButton(
+                    text=f"{dep['namespace']}/{dep['name']}",
+                    callback_data=f"{prefix}{idx}",
+                )
+            ]
+            for idx, dep in enumerate(deployments[:20])
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-# @router.message(UserState.default, Command("rollback"), F.text == "/rollback")
-# async def command_rollback_pure(message: Message, state: FSMContext) -> None:
-#     await message.answer(prompt_version_message())
-#     await state.set_state(UserState.rollback_prompted_version)
+async def rollback_confirmation_keyboard(state: FSMContext) -> InlineKeyboardMarkup:
+    keyboard = [
+        [
+            InlineKeyboardButton(text=await tr(state, "yes"), callback_data="rollback-yes"),
+            InlineKeyboardButton(text=await tr(state, "no"), callback_data="rollback-no"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-@router.callback_query(UserState.default, F.data == "rollback")
-async def query_rollback(query: CallbackQuery, state: FSMContext) -> None:
-    if query.message is None:
-        return
+async def begin_rollback_menu_flow(message: Message, state: FSMContext) -> None:
+    await start.flush_pending_go_home_if_any(message, state)
 
     deployments = api.v1.kubernetes.metrics.deployments()
     if deployments is None or len(deployments) == 0:
-        await query.message.answer("Could not load deployments.")
-        await start.command_start(query.message, state)
+        await start.return_to_main_menu(
+            message,
+            state,
+            notice=await tr(state, "could_not_load_deployments"),
+            history_command="/rollback",
+        )
         return
 
     options = [{"namespace": d["namespace"], "name": d["name"]} for d in deployments]
     await state.update_data(rollback_deployments=options)
     await state.set_state(UserState.rollback_pick_deployment)
-    await query.message.answer(
-        "Choose deployment to rollback:",
-        reply_markup=deployments_keyboard(options, "rollback-pick-", "rollback-cancel"),
+    await start.edit_main_menu_stage(
+        message,
+        state,
+        await tr(state, "rollback_choose_deployment"),
+        reply_markup=await deployments_keyboard(
+            options, state, "rollback-pick-", "rollback-cancel"
+        ),
     )
+
+
+async def show_rollback_confirm(
+    message: Message, state: FSMContext, namespace: str, name: str
+) -> None:
+    await state.update_data(namespace=namespace, name=name)
+    await state.set_state(UserState.rollback_confirm)
+
+    await start.edit_main_menu_stage(
+        message,
+        state,
+        await tr(
+            state,
+            "rollback_confirm",
+            name=name,
+            namespace=namespace,
+        ),
+        reply_markup=await rollback_confirmation_keyboard(state),
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def complete_rollback(
+    message: Message,
+    state: FSMContext,
+    namespace: str,
+    name: str,
+) -> None:
+    cmd = f"/rollback {namespace}:{name}"
+    result = api.v1.kubernetes.service.rollback(namespace, name)
+
+    if type(result) is str:
+        if result == "Internal Server Error":
+            await start.return_to_main_menu(
+                message,
+                state,
+                notice=await tr(state, "rollback_no_revision"),
+                history_command=cmd,
+            )
+            return
+
+        await start.return_to_main_menu(
+            message, state, notice=result, history_command=cmd
+        )
+        return
+
+    notice = await tr(state, "rollback_requested", namespace=namespace, name=name)
+    notice = notice + "\n\n" + str(result)
+    status_response = api.v1.kubernetes.service.status(namespace, name)
+    if status_response is not None:
+        language = await get_effective_language(state)
+        notice = notice + "\n\n" + format_deployment_status(
+            namespace, name, status_response["data"], language
+        )
+
+    await start.return_to_main_menu(
+        message, state, notice=notice, history_command=cmd
+    )
+
+
+async def run_rollback_or_prompt_password(
+    message: Message,
+    state: FSMContext,
+    namespace: str,
+    name: str,
+) -> None:
+    if requires_actions_password():
+        await prompt_actions_password(
+            message,
+            state,
+            {"kind": "rollback_exec", "namespace": namespace, "name": name},
+        )
+        return
+    await complete_rollback(message, state, namespace, name)
+
+
+@router.callback_query(StateFilter(UserState.default, UserState.awaiting_go_home), F.data == "rollback")
+async def query_rollback(query: CallbackQuery, state: FSMContext) -> None:
+    await query.answer()
+    if query.message is None:
+        return
+    await start.flush_pending_go_home_if_any(query.message, state)
+    await begin_rollback_menu_flow(query.message, state)
 
 
 @router.callback_query(UserState.rollback_pick_deployment, F.data.startswith("rollback-pick-"))
 async def query_rollback_pick(query: CallbackQuery, state: FSMContext) -> None:
+    await query.answer()
     if query.message is None:
         return
 
@@ -98,52 +202,36 @@ async def query_rollback_pick(query: CallbackQuery, state: FSMContext) -> None:
     options: list[dict[str, str]] = data.get("rollback_deployments", [])
     idx_str = query.data.removeprefix("rollback-pick-")
     if not idx_str.isdigit():
-        await query.message.answer("Invalid selection.")
-        await start.command_start(query.message, state)
+        await start.return_to_main_menu(
+            query.message,
+            state,
+            notice=await tr(state, "invalid_selection"),
+            history_command="/rollback",
+        )
         return
 
     idx = int(idx_str)
     if idx < 0 or idx >= len(options):
-        await query.message.answer("Invalid selection.")
-        await start.command_start(query.message, state)
+        await start.return_to_main_menu(
+            query.message,
+            state,
+            notice=await tr(state, "invalid_selection"),
+            history_command="/rollback",
+        )
         return
 
     selected = options[idx]
-    await state.update_data(namespace=selected["namespace"], name=selected["name"])
-    await state.set_state(UserState.rollback_confirm)
-
-    keyboard = [
-        [
-            InlineKeyboardButton(text="Yes", callback_data="rollback-yes"),
-            InlineKeyboardButton(text="No", callback_data="rollback-no"),
-        ],
-    ]
-    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-    await query.message.answer(
-        f"Are you sure you want to roll back `{selected['name']}` in `{selected['namespace']}`?",
-        reply_markup=markup,
-        parse_mode=ParseMode.MARKDOWN,
+    await show_rollback_confirm(
+        query.message, state, selected["namespace"], selected["name"]
     )
 
 
 @router.callback_query(UserState.rollback_pick_deployment, F.data == "rollback-cancel")
 async def query_rollback_cancel(query: CallbackQuery, state: FSMContext) -> None:
+    await query.answer()
     if query.message is None:
         return
-    await query.message.answer("Operation cancelled.")
-    await start.command_start(query.message, state)
-
-
-# @router.message(UserState.rollback_prompted_version)
-# async def received_version(message: Message, state: FSMContext) -> None:
-# if message.text is None:
-# await command_rollback_pure(message, state)
-# return
-#
-# await state.update_data(version=message.text)
-# await state.set_state(UserState.rollback_confirm)
-# await confirm(message, state)
+    await start.return_to_main_menu(query.message, state)
 
 
 @router.message(UserState.default, Command("rollback"))
@@ -154,61 +242,25 @@ async def command_rollback(message: Message, state: FSMContext) -> None:
     if rollback_data is None:
         deployments = api.v1.kubernetes.metrics.deployments()
         if deployments is None or len(deployments) == 0:
-            await message.answer("`/rollback <NAMESPACE>:<NAME>`", parse_mode=ParseMode.MARKDOWN_V2)
+            await start.edit_main_menu_stage_with_go_home(
+                message,
+                state,
+                await tr(state, "rollback_invalid_usage"),
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
             return
 
-        options = [{"namespace": d["namespace"], "name": d["name"]} for d in deployments]
-        await state.update_data(rollback_deployments=options)
-        await state.set_state(UserState.rollback_pick_deployment)
-        await message.answer(
-            "Choose deployment to rollback:",
-            reply_markup=deployments_keyboard(options, "rollback-pick-", "rollback-cancel"),
-        )
+        await begin_rollback_menu_flow(message, state)
         return
 
-    await state.update_data(
-        namespace=rollback_data.namespace,
-        name=rollback_data.name,
-    )
-    await state.set_state(UserState.rollback_confirm)
-    # await confirm(message, state)
-
-    keyboard = [
-        [
-            InlineKeyboardButton(text="Yes", callback_data="rollback-yes"),
-            InlineKeyboardButton(text="No", callback_data="rollback-no"),
-        ],
-    ]
-    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-    await message.answer(
-        f"Are you sure you want to roll back `{rollback_data.name}` in `{rollback_data.namespace}`?",
-        reply_markup=markup,
-        parse_mode=ParseMode.MARKDOWN,
-    )
-
-
-async def confirm(message: Message, state: FSMContext) -> None:
-    version: str | None = await state.get_value("version")
-    assert version is not None
-
-    keyboard = [
-        [
-            InlineKeyboardButton(text="Yes", callback_data="rollback-yes"),
-            InlineKeyboardButton(text="No", callback_data="rollback-no"),
-        ],
-    ]
-
-    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-    await message.answer(
-        f"Are you sure you want to roll back to version {version}?",
-        reply_markup=markup,
+    await show_rollback_confirm(
+        message, state, rollback_data.namespace, rollback_data.name
     )
 
 
 @router.callback_query(UserState.rollback_confirm, F.data == "rollback-yes")
 async def roll_back(query: CallbackQuery, state: FSMContext) -> None:
+    await query.answer()
     data = await state.get_data()
     namespace: str | None = data.get("namespace")
     name: str | None = data.get("name")
@@ -217,39 +269,22 @@ async def roll_back(query: CallbackQuery, state: FSMContext) -> None:
         return
 
     if not all([namespace, name]):
-        await query.message.answer("Missing rollback data.")
-        await start.command_start(query.message, state)
+        await start.return_to_main_menu(
+            query.message,
+            state,
+            notice=await tr(state, "rollback_missing_data"),
+            history_command="/rollback",
+        )
         return
-
-    await query.message.answer("Rolling back, please wait...")
 
     if namespace is None or name is None:
         return
 
-    result = api.v1.kubernetes.service.rollback(namespace, name)
-
-    if type(result) is str:
-        if result == "Internal Server Error":
-            await query.message.answer("No revision found for deployment")
-            return
-
-        await query.message.answer(result)
-        return
-
-    await query.message.answer(f"⏪ Rollback requested for {namespace}:{name}.")
-    await query.message.answer(str(result))
-    status_response = api.v1.kubernetes.service.status(namespace, name)
-    if status_response is not None:
-        await query.message.answer(
-            format_deployment_status(namespace, name, status_response["data"])
-        )
-
-    await start.command_start(query.message, state)
+    await run_rollback_or_prompt_password(query.message, state, namespace, name)
 
 
 @router.callback_query(UserState.rollback_confirm, F.data == "rollback-no")
 async def dont_roll_back(query: CallbackQuery, state: FSMContext) -> None:
+    await query.answer()
     assert query.message is not None
-    await query.message.answer("Operation cancelled.")
-
-    await start.command_start(query.message, state)
+    await start.return_to_main_menu(query.message, state)

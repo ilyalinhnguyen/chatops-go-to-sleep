@@ -8,22 +8,16 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/handlers/kubernetes"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/handlers/kubernetes/service"
-	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/handlers/prometheus"
 	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/middleware"
-	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/api/middleware/metrics"
-	"github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/config"
 	kuberclient "github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/kuber_client"
-	prometheusclient "github.com/ilyalinhnguyen/chatops-go-to-sleep/backend/prometheus_client"
 )
 
 type Handler struct {
 	log            *slog.Logger
 	authMiddleware *middleware.AuthenticationMiddleware
 	router         *fiber.App
-	promClient     *prometheusclient.Client
 	kubeClient     *kuberclient.Client
 	kubeMetrics    *kubernetes.MetricsHandler
-	promMetrics    *prometheus.MetricsHandler
 	kubeService    *service.Handler
 }
 
@@ -37,9 +31,6 @@ func (h *Handler) Run() error {
 }
 
 func NewHandler(log *slog.Logger, auth *middleware.AuthenticationMiddleware) *Handler {
-	cfg := config.NewConfig()
-	promClient := prometheusclient.NewClient(cfg.PrometheusURL)
-
 	// Initialize Kubernetes client once
 	kubeClient, err := kuberclient.NewClient()
 	if err != nil {
@@ -49,7 +40,6 @@ func NewHandler(log *slog.Logger, auth *middleware.AuthenticationMiddleware) *Ha
 
 	// Pass the Kubernetes client to both the metrics handler and service handler
 	kubeMetrics := kubernetes.NewMetricsHandler(log, kubeClient)
-	promMetrics := prometheus.NewMetricsHandler(log, cfg.PrometheusURL)
 
 	// Initialize Kubernetes service handler with the same client
 	var kubeService *service.Handler
@@ -66,10 +56,8 @@ func NewHandler(log *slog.Logger, auth *middleware.AuthenticationMiddleware) *Ha
 	return &Handler{
 		log:            log,
 		authMiddleware: auth,
-		promClient:     promClient,
 		kubeClient:     kubeClient,
 		kubeMetrics:    kubeMetrics,
-		promMetrics:    promMetrics,
 		kubeService:    kubeService,
 	}
 }
@@ -77,9 +65,6 @@ func NewHandler(log *slog.Logger, auth *middleware.AuthenticationMiddleware) *Ha
 func (h *Handler) InitRoutes(cfg fiber.Config) {
 	router := fiber.New(cfg)
 	h.router = router
-
-	// Add metrics middleware to all routes
-	router.Use(metrics.Middleware(h.promClient))
 
 	api := router.Group("/api")
 
@@ -108,26 +93,8 @@ func (h *Handler) InitRoutes(cfg fiber.Config) {
 	kubeServiceGroup.Post("/update", h.updateHandler)
 	kubeServiceGroup.Post("/status", h.statusHandler)
 
-	// Prometheus metrics endpoints
-	prometheusGroup := v1.Group("/prometheus")
-	prometheusGroup.Get("/metrics/basic", h.promMetrics.GetBasicMetrics)
-	prometheusGroup.Get("/metrics/list", h.promMetrics.MetricsList)
-	prometheusGroup.Get("/metrics/:name", h.promMetrics.QueryMetric)
-	prometheusGroup.Post("/query", h.promMetrics.CustomQuery)
-
-	prometheusAlerts := prometheusGroup.Group("/alerts")
-	prometheusAlerts.Get("/list", h.promMetrics.GetAlerts)
-	prometheusAlerts.Get("/rules", h.promMetrics.GetAlertRules)
-	prometheusAlerts.Get("/query", h.promMetrics.QueryAlerts)
-	prometheusAlerts.Get("/active", h.promMetrics.GetActiveAlerts)
-
 	// Secure ping
 	v1.Get("/ping", h.ping)
-}
-
-func (h *Handler) metricsHandler(c fiber.Ctx) error {
-	// Use our custom metrics handler
-	return h.promClient.MetricsHandler()(c)
 }
 
 func (h *Handler) scaleHandler(c fiber.Ctx) error {

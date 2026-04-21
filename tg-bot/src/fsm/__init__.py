@@ -2,8 +2,11 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class UserState(StatesGroup):
+    awaiting_language_selection = State()
+    awaiting_go_home = State()
+    awaiting_actions_password = State()
     default = State()
-    deployments = State()
+    deployments_prompted = State()
     scale_prompted_service = State()
     scale_prompted_n = State()
     scale_confirm = State()
